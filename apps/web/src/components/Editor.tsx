@@ -145,7 +145,7 @@ export function Editor({ editor, capabilities, endpoints, deployments, routes, a
 
   return (
     <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section className="modal" role="dialog" aria-modal="true" aria-labelledby="editor-title">
+      <section className={editor.resource === "capabilities" ? "modal capability-editor" : "modal"} role="dialog" aria-modal="true" aria-labelledby="editor-title">
         <div className="modal-heading">
           <div><p>{editor.id ? "编辑配置" : "新增配置"}</p><h2 id="editor-title">{EDITOR_TITLES[editor.resource]}</h2></div>
           <button onClick={onClose} aria-label="关闭">×</button>
