@@ -1,0 +1,149 @@
+import { useState, type FormEvent } from "react";
+import type { AdminApi, Capability, Deployment, EditorState, Endpoint, ResourceName, Route } from "../types";
+import { Check, Field, SelectField } from "./ui";
+
+const DEFAULT_PROMPT = "请准确描述图片内容，并回答调用者关于图片的问题。";
+
+const EDITOR_TITLES: Record<ResourceName, string> = {
+  capabilities: "能力",
+  endpoints: "Ollama 端点",
+  deployments: "模型部署",
+  routes: "能力路由"
+};
+
+export type EditorProps = {
+  editor: Exclude<EditorState, null>;
+  capabilities: Capability[];
+  endpoints: Endpoint[];
+  deployments: Deployment[];
+  routes: Route[];
+  api: AdminApi;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+};
+
+/** 能力只读定义：由服务端代码提供，管理端只能看，用来解释这个能力怎么被调用。 */
+function CapabilityContract({ capability }: { capability: Capability | undefined }) {
+  const definition = capability?.definition;
+  if (!definition) return null;
+
+  return (
+    <section className="contract">
+      <h3>不可编辑的调用说明</h3>
+      <dl className="contract-facts">
+        <div><dt>执行器</dt><dd><code>{definition.executorType}</code></dd></div>
+        <div><dt>MCP 工具</dt><dd><code>{definition.toolName}</code></dd></div>
+        <div><dt>代码定义标识</dt><dd><code>{definition.definitionKey}</code></dd></div>
+      </dl>
+      <p className="contract-note">能力由服务端代码实现，参数与执行方式固定，只能在上面修改 Agent 看到的名称、标识与说明。</p>
+      <table className="param-table">
+        <thead><tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+        <tbody>
+          {definition.parameters.map((parameter) => (
+            <tr key={parameter.name}>
+              <td className="strong"><code>{parameter.name}</code></td>
+              <td><code>{parameter.type}</code></td>
+              <td>{parameter.required ? "是" : "否"}</td>
+              <td>{parameter.description}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
+/** 新增/编辑四类资源的共用一个弹窗；字段差异由 resource 决定。 */
+export function Editor({ editor, capabilities, endpoints, deployments, routes, api, onClose, onSaved }: EditorProps) {
+  const existing = [...capabilities, ...endpoints, ...deployments, ...routes].find((item) => item.id === editor.id) as Record<string, unknown> | undefined;
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function buildBody(data: FormData): Record<string, unknown> {
+    if (editor.resource === "capabilities") {
+      return {
+        key: data.get("key"),
+        name: data.get("name"),
+        description: data.get("description"),
+        enabled: data.get("enabled") === "on",
+        ...(existing?.version ? { version: existing.version } : {})
+      };
+    }
+    if (editor.resource === "endpoints") {
+      return { name: data.get("name"), baseUrl: data.get("baseUrl"), enabled: data.get("enabled") === "on" };
+    }
+    if (editor.resource === "deployments") {
+      return {
+        endpointId: data.get("endpointId"),
+        modelName: data.get("modelName"),
+        supportsVision: data.get("supportsVision") === "on",
+        timeoutMs: Number(data.get("timeoutMs")) * 1000,
+        enabled: data.get("enabled") === "on"
+      };
+    }
+    return {
+      capabilityId: data.get("capabilityId"),
+      deploymentId: data.get("deploymentId"),
+      priority: Number(data.get("priority")),
+      promptTemplate: data.get("promptTemplate"),
+      enabled: data.get("enabled") === "on"
+    };
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const body = buildBody(new FormData(event.currentTarget));
+    setSaving(true);
+    setError(null);
+    try {
+      await api(`${editor.resource}${editor.id ? `/${editor.id}` : ""}`, { method: editor.id ? "PUT" : "POST", body: JSON.stringify(body) });
+      await onSaved();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "保存失败");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section className="modal" role="dialog" aria-modal="true" aria-labelledby="editor-title">
+        <div className="modal-heading">
+          <div><p>{editor.id ? "编辑配置" : "新增配置"}</p><h2 id="editor-title">{EDITOR_TITLES[editor.resource]}</h2></div>
+          <button onClick={onClose} aria-label="关闭">×</button>
+        </div>
+        <form onSubmit={(event) => void submit(event)}>
+          {editor.resource === "capabilities" && <>
+            <Field name="name" label="名称" defaultValue={String(existing?.name ?? "")} required />
+            <Field name="key" label="能力标识" defaultValue={String(existing?.key ?? "")} placeholder="image.describe" required />
+            <p className="field-hint">标识是 Agent 调用时传的 capabilityKey；改动后仍按旧标识调用的 Agent 会失败，改用默认能力的调用不受影响。</p>
+            <Field name="description" label="Agent 可见说明" defaultValue={String(existing?.description ?? "")} multiline required />
+            <CapabilityContract capability={capabilities.find((item) => item.id === editor.id)} />
+          </>}
+          {editor.resource === "endpoints" && <>
+            <Field name="name" label="端点名称" defaultValue={String(existing?.name ?? "")} placeholder="本机 Ollama" required />
+            <Field name="baseUrl" label="服务根地址" defaultValue={String(existing?.baseUrl ?? "")} placeholder="http://host.docker.internal:11434" required />
+          </>}
+          {editor.resource === "deployments" && <>
+            <SelectField name="endpointId" label="Ollama 端点" defaultValue={String(existing?.endpointId ?? "")} options={endpoints.map((item) => ({ value: item.id, label: item.name }))} />
+            <Field name="modelName" label="模型名称" defaultValue={String(existing?.modelName ?? "")} placeholder="qwen2.5vl:7b" required />
+            <Field name="timeoutMs" label="超时（秒）" type="number" defaultValue={String(Number(existing?.timeoutMs ?? 60_000) / 1000)} required />
+            <Check name="supportsVision" label="已确认支持图片" defaultChecked={existing ? Boolean(existing.supportsVision) : true} />
+          </>}
+          {editor.resource === "routes" && <>
+            <SelectField name="capabilityId" label="能力" defaultValue={String(existing?.capabilityId ?? "")} options={capabilities.map((item) => ({ value: item.id, label: item.name }))} />
+            <SelectField name="deploymentId" label="模型部署" defaultValue={String(existing?.deploymentId ?? "")} options={deployments.map((item) => ({ value: item.id, label: item.modelName }))} />
+            <Field name="priority" label="优先级" type="number" defaultValue={String(existing?.priority ?? 100)} required />
+            <Field name="promptTemplate" label="默认提示词" defaultValue={String(existing?.promptTemplate ?? DEFAULT_PROMPT)} multiline required />
+            <p className="field-hint">路由只管这一步模型调用：选模型、定超时、给默认提示词。调用者自己带了 prompt 时以 prompt 为准，只有没带时才用这里的默认提示词。</p>
+          </>}
+          <Check name="enabled" label="立即启用" defaultChecked={existing ? Boolean(existing.enabled) : true} />
+          {error && <p className="form-error">{error}</p>}
+          <div className="modal-actions">
+            <button type="button" className="secondary" onClick={onClose}>取消</button>
+            <button type="submit" disabled={saving}>{saving ? "保存中…" : "保存配置"}</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}

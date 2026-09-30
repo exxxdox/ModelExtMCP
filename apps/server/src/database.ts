@@ -2,6 +2,10 @@ import { randomBytes, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import {
+  PRIMARY_CAPABILITY_DEFINITION_KEY,
+  VISION_CAPABILITY_DEFINITIONS
+} from "./capabilities.js";
 import type {
   Capability,
   CapabilityRoute,
@@ -13,7 +17,13 @@ import type {
 type DatabaseRow = Record<string, unknown>;
 export type CredentialKind = "admin" | "mcp";
 export type AccessCredential = { kind: CredentialKind; token: string; updatedAt: string };
-export type RuntimeSettings = { maxImageBytes: number; maxConcurrentRequests: number; updatedAt: string };
+export type RuntimeSettings = {
+  maxImageBytes: number;
+  maxConcurrentRequests: number;
+  /** 是否允许网络访问 MCP 端点；关闭时只接受本机与本机网段的调用。 */
+  allowNetworkAccess: boolean;
+  updatedAt: string;
+};
 
 function asBoolean(value: unknown): boolean {
   return value === 1;
@@ -22,6 +32,7 @@ function asBoolean(value: unknown): boolean {
 function mapCapability(row: DatabaseRow): Capability {
   return {
     id: String(row.id),
+    definitionKey: String(row.definition_key),
     key: String(row.key),
     name: String(row.name),
     description: String(row.description),
@@ -92,6 +103,7 @@ export class AppDatabase {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS capabilities (
         id TEXT PRIMARY KEY,
+        definition_key TEXT NOT NULL,
         key TEXT NOT NULL UNIQUE,
         name TEXT NOT NULL,
         description TEXT NOT NULL,
@@ -142,18 +154,62 @@ export class AppDatabase {
         singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
         max_image_bytes INTEGER NOT NULL CHECK (max_image_bytes BETWEEN 1024 AND 52428800),
         max_concurrent_requests INTEGER NOT NULL CHECK (max_concurrent_requests BETWEEN 1 AND 32),
+        allow_network_access INTEGER NOT NULL DEFAULT 1 CHECK (allow_network_access IN (0, 1)),
         updated_at TEXT NOT NULL
       );
     `);
+    this.addMissingColumns();
+    this.migrateCapabilityDefinitionKeys();
   }
 
+  /**
+   * definition_key 是后来引入的不可变代码标识。旧库没有该列，且其中的 key 可能
+   * 已被管理员改过，因此按注册表的首个定义回填——升级前的库里只有代码内置的那一个能力。
+   */
+  private migrateCapabilityDefinitionKeys(): void {
+    const columns = this.db.prepare("PRAGMA table_info(capabilities)").all() as DatabaseRow[];
+    if (!columns.some((column) => String(column.name) === "definition_key")) {
+      this.db.exec("ALTER TABLE capabilities ADD COLUMN definition_key TEXT NOT NULL DEFAULT '';");
+      this.db.prepare("UPDATE capabilities SET definition_key = ? WHERE definition_key = ''")
+        .run(PRIMARY_CAPABILITY_DEFINITION_KEY);
+    }
+    // 唯一索引在两条路径上都要有：新建表与旧表补列（SQLite 不允许 ALTER 直接加 UNIQUE 列）。
+    this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_capabilities_definition_key ON capabilities(definition_key);");
+  }
+
+  /**
+   * CREATE TABLE IF NOT EXISTS 不会给已存在的表补列，升级时旧数据卷会缺列，
+   * 因此这里显式检查并补齐；默认值 1 让升级后行为与升级前一致。
+   */
+  private addMissingColumns(): void {
+    const columns = this.db.prepare("PRAGMA table_info(runtime_settings)").all() as DatabaseRow[];
+    const hasColumn = columns.some((column) => String(column.name) === "allow_network_access");
+    if (hasColumn) return;
+    this.db.exec("ALTER TABLE runtime_settings ADD COLUMN allow_network_access INTEGER NOT NULL DEFAULT 1 CHECK (allow_network_access IN (0, 1));");
+  }
+
+  /**
+   * 能力集合来自代码注册表，按 definition_key 写入：管理员改过 key 之后重启不会
+   * 再插入一行重复能力。名称与描述只在首次写入时取注册表默认值。
+   */
   private seed(): void {
     const now = new Date().toISOString();
-    this.db.prepare(`
-      INSERT OR IGNORE INTO capabilities
-        (id, key, name, description, executor_type, enabled, version, created_at, updated_at)
-      VALUES (?, 'image.describe', '图像理解', '描述图片内容并回答关于图片的问题', 'ollama_vision', 1, 1, ?, ?)
-    `).run(randomUUID(), now, now);
+    for (const definition of VISION_CAPABILITY_DEFINITIONS) {
+      this.db.prepare(`
+        INSERT OR IGNORE INTO capabilities
+          (id, definition_key, key, name, description, executor_type, enabled, version, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?, ?)
+      `).run(
+        randomUUID(),
+        definition.definitionKey,
+        definition.defaultKey,
+        definition.name,
+        definition.description,
+        definition.executorType,
+        now,
+        now
+      );
+    }
   }
 
   private ensureCredentials(): void {
@@ -174,8 +230,8 @@ export class AppDatabase {
   private ensureRuntimeSettings(): void {
     this.db.prepare(`
       INSERT OR IGNORE INTO runtime_settings
-        (singleton_id, max_image_bytes, max_concurrent_requests, updated_at)
-      VALUES (1, 10485760, 4, ?)
+        (singleton_id, max_image_bytes, max_concurrent_requests, allow_network_access, updated_at)
+      VALUES (1, 10485760, 4, 1, ?)
     `).run(new Date().toISOString());
   }
 
@@ -185,14 +241,20 @@ export class AppDatabase {
     return {
       maxImageBytes: Number(row.max_image_bytes),
       maxConcurrentRequests: Number(row.max_concurrent_requests),
+      allowNetworkAccess: asBoolean(row.allow_network_access),
       updatedAt: String(row.updated_at)
     };
   }
 
-  updateRuntimeSettings(input: Pick<RuntimeSettings, "maxImageBytes" | "maxConcurrentRequests">): RuntimeSettings {
+  /** 是否允许网络访问 MCP；设置缺失时按放行处理，避免误挡正常运行。 */
+  isNetworkAccessAllowed(): boolean {
+    return this.getRuntimeSettings().allowNetworkAccess;
+  }
+
+  updateRuntimeSettings(input: Pick<RuntimeSettings, "maxImageBytes" | "maxConcurrentRequests" | "allowNetworkAccess">): RuntimeSettings {
     this.db.prepare(`
-      UPDATE runtime_settings SET max_image_bytes = ?, max_concurrent_requests = ?, updated_at = ? WHERE singleton_id = 1
-    `).run(input.maxImageBytes, input.maxConcurrentRequests, new Date().toISOString());
+      UPDATE runtime_settings SET max_image_bytes = ?, max_concurrent_requests = ?, allow_network_access = ?, updated_at = ? WHERE singleton_id = 1
+    `).run(input.maxImageBytes, input.maxConcurrentRequests, Number(input.allowNetworkAccess), new Date().toISOString());
     return this.getRuntimeSettings();
   }
 
@@ -218,16 +280,6 @@ export class AppDatabase {
     return this.db.prepare("SELECT * FROM capabilities ORDER BY created_at").all().map(mapCapability);
   }
 
-  createCapability(input: Pick<Capability, "key" | "name" | "description" | "enabled">): Capability {
-    const id = randomUUID();
-    const now = new Date().toISOString();
-    this.db.prepare(`
-      INSERT INTO capabilities (id, key, name, description, executor_type, enabled, version, created_at, updated_at)
-      VALUES (?, ?, ?, ?, 'ollama_vision', ?, 1, ?, ?)
-    `).run(id, input.key, input.name, input.description, Number(input.enabled), now, now);
-    return this.getCapability(id);
-  }
-
   updateCapability(id: string, input: Pick<Capability, "key" | "name" | "description" | "enabled" | "version">): Capability {
     const result = this.db.prepare(`
       UPDATE capabilities SET key = ?, name = ?, description = ?, enabled = ?, version = version + 1, updated_at = ?
@@ -237,8 +289,14 @@ export class AppDatabase {
     return this.getCapability(id);
   }
 
-  deleteCapability(id: string): void {
-    this.deleteById("capabilities", id);
+  /** 能力集合由代码决定，不提供删除；这里只取默认能力供 MCP 解析省略的标识。 */
+  getDefaultCapabilityKey(): string {
+    const row = this.db.prepare("SELECT key FROM capabilities WHERE definition_key = ?")
+      .get(PRIMARY_CAPABILITY_DEFINITION_KEY) as DatabaseRow | undefined;
+    if (row) return String(row.key);
+    const fallback = this.db.prepare("SELECT key FROM capabilities ORDER BY created_at").get() as DatabaseRow | undefined;
+    if (!fallback) throw new Error("NO_CAPABILITY");
+    return String(fallback.key);
   }
 
   private getCapability(id: string): Capability {
@@ -349,7 +407,7 @@ export class AppDatabase {
     return this.resolveRoutes("image.describe").length > 0;
   }
 
-  private deleteById(table: "capabilities" | "ollama_endpoints" | "model_deployments" | "capability_routes", id: string): void {
+  private deleteById(table: "ollama_endpoints" | "model_deployments" | "capability_routes", id: string): void {
     const result = this.db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
     if (result.changes === 0) throw new Error("NOT_FOUND");
   }

@@ -10,7 +10,9 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/api": "http://localhost:3000",
-      "/health": "http://localhost:3000"
+      "/health": "http://localhost:3000",
+      // 控制台复制的 MCP 配置使用页面自身的 origin，开发时也要能打通 /mcp。
+      "/mcp": "http://localhost:3000"
     }
   }
 });

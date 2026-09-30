@@ -1,14 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
-import { z } from "zod";
+import { IMAGE_INPUT_SCHEMA } from "./capabilities.js";
 import type { VisionService } from "./service.js";
-
-const imageInputSchema = z.object({
-  capabilityKey: z.string().default("image.describe").describe("要调用的能力标识，默认 image.describe"),
-  imageBase64: z.string().min(1).describe("JPEG、PNG 或 WebP 图片的 Base64 内容，可包含 data URL 前缀"),
-  mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]).describe("图片 MIME 类型"),
-  prompt: z.string().max(4_000).optional().describe("希望模型回答的图片相关问题")
-});
 
 export function createVisionMcpHandler(service: VisionService) {
   return createMcpHandler(
@@ -19,7 +12,7 @@ export function createVisionMcpHandler(service: VisionService) {
         {
           title: "Analyze image with a configured vision model",
           description: "When the current model cannot see images, send an image to a configured Ollama vision model.",
-          inputSchema: imageInputSchema
+          inputSchema: IMAGE_INPUT_SCHEMA
         },
         async (input) => {
           try {

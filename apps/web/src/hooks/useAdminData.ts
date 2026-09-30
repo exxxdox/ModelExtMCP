@@ -1,0 +1,251 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { createAdminApi } from "../api-client";
+import type {
+  AdminApi,
+  Capability,
+  Credential,
+  Deployment,
+  DiscoveredModel,
+  Endpoint,
+  EndpointTestResult,
+  EndpointTestState,
+  ResourceName,
+  Route,
+  RuntimeSettings
+} from "../types";
+
+/**
+ * 管理端的数据层。页面拆分后每个页面只需要读自己那部分数据，
+ * 但刷新、鉴权失败、凭据轮转这些横切逻辑必须只有一份，
+ * 否则各页面会各自维护令牌并产生不一致状态。
+ */
+export type AdminData = {
+  capabilities: Capability[];
+  endpoints: Endpoint[];
+  deployments: Deployment[];
+  routes: Route[];
+  credentials: Credential[];
+  runtimeSettings: RuntimeSettings | null;
+  endpointTests: Record<string, EndpointTestState>;
+  discoveredModels: DiscoveredModel[] | null;
+  refreshingModels: boolean;
+  revealedCredentials: Set<Credential["kind"]>;
+  loading: boolean;
+  message: string | null;
+  endpointMap: Map<string, Endpoint>;
+  deploymentMap: Map<string, Deployment>;
+  capabilityMap: Map<string, Capability>;
+  activeRouteCount: number;
+  enabledCapabilityCount: number;
+  enabledEndpointCount: number;
+  enabledDeploymentCount: number;
+  mcpCredential: Credential | undefined;
+  api: AdminApi;
+  refresh: () => Promise<void>;
+  remove: (resource: ResourceName, id: string) => Promise<void>;
+  rotateCredential: (kind: Credential["kind"]) => Promise<void>;
+  copyCredential: (credential: Credential) => Promise<void>;
+  toggleCredentialReveal: (kind: Credential["kind"]) => void;
+  testEndpoint: (endpoint: Endpoint) => Promise<void>;
+  refreshModelList: () => Promise<void>;
+  addDiscoveredModel: (model: DiscoveredModel) => Promise<void>;
+  setRuntimeSettings: (settings: RuntimeSettings) => void;
+  setMessage: (message: string | null) => void;
+};
+
+export function useAdminData(token: string, onUnauthorized: () => void, onAdminTokenRotated: (token: string) => void): AdminData {
+  const [capabilities, setCapabilities] = useState<Capability[]>([]);
+  const [endpoints, setEndpoints] = useState<Endpoint[]>([]);
+  const [deployments, setDeployments] = useState<Deployment[]>([]);
+  const [routes, setRoutes] = useState<Route[]>([]);
+  const [credentials, setCredentials] = useState<Credential[]>([]);
+  const [runtimeSettings, setRuntimeSettings] = useState<RuntimeSettings | null>(null);
+  const [endpointTests, setEndpointTests] = useState<Record<string, EndpointTestState>>({});
+  const [discoveredModels, setDiscoveredModels] = useState<DiscoveredModel[] | null>(null);
+  const [refreshingModels, setRefreshingModels] = useState(false);
+  const [revealedCredentials, setRevealedCredentials] = useState<Set<Credential["kind"]>>(() => new Set());
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const api = useMemo(() => createAdminApi({ token, onUnauthorized }), [token, onUnauthorized]);
+
+  const refresh = useCallback(async () => {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const [nextCapabilities, nextEndpoints, nextDeployments, nextRoutes, nextCredentials, nextRuntimeSettings] = await Promise.all([
+        api<Capability[]>("capabilities"),
+        api<Endpoint[]>("endpoints"),
+        api<Deployment[]>("deployments"),
+        api<Route[]>("routes"),
+        api<Credential[]>("security"),
+        api<RuntimeSettings>("settings")
+      ]);
+      setCapabilities(nextCapabilities);
+      setEndpoints(nextEndpoints);
+      setDeployments(nextDeployments);
+      setRoutes(nextRoutes);
+      setCredentials(nextCredentials);
+      setRuntimeSettings(nextRuntimeSettings);
+      setMessage(null);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "加载失败");
+    } finally {
+      setLoading(false);
+    }
+  }, [api, token]);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const endpointMap = useMemo(() => new Map(endpoints.map((item) => [item.id, item])), [endpoints]);
+  const deploymentMap = useMemo(() => new Map(deployments.map((item) => [item.id, item])), [deployments]);
+  const capabilityMap = useMemo(() => new Map(capabilities.map((item) => [item.id, item])), [capabilities]);
+
+  const remove = useCallback(async (resource: ResourceName, id: string): Promise<void> => {
+    if (!window.confirm("确定删除这条配置？被其他配置引用时不会删除。")) return;
+    try {
+      await api(`${resource}/${id}`, { method: "DELETE" });
+      // 先刷新再提示：refresh 成功时会清空消息，先设置提示会被立刻覆盖掉。
+      await refresh();
+      setMessage("已删除");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "删除失败");
+    }
+  }, [api, refresh]);
+
+  const rotateCredential = useCallback(async (kind: Credential["kind"]): Promise<void> => {
+    const label = kind === "admin" ? "管理员令牌" : "MCP API Key";
+    if (!window.confirm(`轮转后，旧的${label}会立即失效。确定继续？`)) return;
+    try {
+      const next = await api<Credential>(`security/${kind}/rotate`, { method: "POST", body: "{}" });
+      setCredentials((current) => current.map((item) => item.kind === kind ? next : item));
+      setRevealedCredentials((current) => new Set(current).add(kind));
+      if (kind === "admin") {
+        // 管理员令牌轮转后必须立即替换会话里的旧令牌，否则下一次请求会 401 退出登录。
+        sessionStorage.setItem("adminToken", next.token);
+        onAdminTokenRotated(next.token);
+      }
+      setMessage(`${label}已轮转，请更新使用方配置`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "轮转失败");
+    }
+  }, [api, onAdminTokenRotated]);
+
+  const copyCredential = useCallback(async (credential: Credential): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(credential.token);
+      setMessage(credential.kind === "admin" ? "管理员令牌已复制" : "MCP API Key 已复制");
+    } catch {
+      setMessage("浏览器未允许复制，请显示后手动复制");
+    }
+  }, []);
+
+  const toggleCredentialReveal = useCallback((kind: Credential["kind"]): void => {
+    setRevealedCredentials((current) => {
+      const next = new Set(current);
+      if (next.has(kind)) next.delete(kind);
+      else next.add(kind);
+      return next;
+    });
+  }, []);
+
+  const testEndpoint = useCallback(async (endpoint: Endpoint): Promise<void> => {
+    setEndpointTests((current) => ({ ...current, [endpoint.id]: { kind: "testing", text: "测试中…" } }));
+    try {
+      const result = await api<EndpointTestResult>("endpoints/test", {
+        method: "POST",
+        body: JSON.stringify({ baseUrl: endpoint.baseUrl })
+      });
+      setEndpointTests((current) => ({
+        ...current,
+        [endpoint.id]: { kind: "success", text: `连接正常，发现 ${result.models.length} 个模型` }
+      }));
+    } catch (error) {
+      setEndpointTests((current) => ({
+        ...current,
+        [endpoint.id]: { kind: "error", text: error instanceof Error ? error.message : "连接失败" }
+      }));
+    }
+  }, [api]);
+
+  const refreshModelList = useCallback(async (): Promise<void> => {
+    const activeEndpoints = endpoints.filter((endpoint) => endpoint.enabled);
+    if (activeEndpoints.length === 0) {
+      setMessage("请先添加并启用一个 Ollama 端点");
+      return;
+    }
+    setRefreshingModels(true);
+    try {
+      const results = await Promise.allSettled(activeEndpoints.map(async (endpoint) => ({
+        endpoint,
+        result: await api<EndpointTestResult>("endpoints/test", {
+          method: "POST",
+          body: JSON.stringify({ baseUrl: endpoint.baseUrl })
+        })
+      })));
+      const nextModels = results.flatMap((result) => result.status === "fulfilled"
+        ? result.value.result.models.map((modelName) => ({ endpointId: result.value.endpoint.id, endpointName: result.value.endpoint.name, modelName }))
+        : []);
+      setDiscoveredModels(nextModels);
+      const failedCount = results.filter((result) => result.status === "rejected").length;
+      setMessage(failedCount > 0
+        ? `已刷新 ${activeEndpoints.length - failedCount} 个端点，${failedCount} 个端点连接失败`
+        : `模型列表已刷新，共发现 ${nextModels.length} 个模型`);
+    } finally {
+      setRefreshingModels(false);
+    }
+  }, [api, endpoints]);
+
+  const addDiscoveredModel = useCallback(async (model: DiscoveredModel): Promise<void> => {
+    try {
+      await api<Deployment>("deployments", {
+        method: "POST",
+        body: JSON.stringify({
+          endpointId: model.endpointId,
+          modelName: model.modelName,
+          supportsVision: true,
+          timeoutMs: 60_000,
+          enabled: true
+        })
+      });
+      setMessage(`${model.modelName} 已添加为视觉模型`);
+      await refresh();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "添加模型失败");
+    }
+  }, [api, refresh]);
+
+  return {
+    capabilities,
+    endpoints,
+    deployments,
+    routes,
+    credentials,
+    runtimeSettings,
+    endpointTests,
+    discoveredModels,
+    refreshingModels,
+    revealedCredentials,
+    loading,
+    message,
+    endpointMap,
+    deploymentMap,
+    capabilityMap,
+    activeRouteCount: routes.filter((route) => route.enabled).length,
+    enabledCapabilityCount: capabilities.filter((item) => item.enabled).length,
+    enabledEndpointCount: endpoints.filter((item) => item.enabled).length,
+    enabledDeploymentCount: deployments.filter((item) => item.enabled).length,
+    mcpCredential: credentials.find((credential) => credential.kind === "mcp"),
+    api,
+    refresh,
+    remove,
+    rotateCredential,
+    copyCredential,
+    toggleCredentialReveal,
+    testEndpoint,
+    refreshModelList,
+    addDiscoveredModel,
+    setRuntimeSettings,
+    setMessage
+  };
+}

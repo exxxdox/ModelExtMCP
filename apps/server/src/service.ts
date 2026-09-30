@@ -39,9 +39,18 @@ export class VisionService {
     this.semaphore = new Semaphore(() => this.database.getRuntimeSettings().maxConcurrentRequests);
   }
 
-  async analyze(capabilityKey: string, input: ImageInput, requestId: string): Promise<AnalysisResult> {
+  /**
+   * Agent 可以省略能力标识；此时用服务端配置的默认能力，避免调用方硬编码一个
+   * 管理员随时可能改掉的字符串。
+   */
+  resolveCapabilityKey(capabilityKey: string | undefined): string {
+    return capabilityKey?.trim() || this.database.getDefaultCapabilityKey();
+  }
+
+  async analyze(capabilityKey: string | undefined, input: ImageInput, requestId: string): Promise<AnalysisResult> {
+    const resolvedKey = this.resolveCapabilityKey(capabilityKey);
     const imageBase64 = validateImage(input, this.database.getRuntimeSettings().maxImageBytes);
-    const routes = this.database.resolveRoutes(capabilityKey);
+    const routes = this.database.resolveRoutes(resolvedKey);
     if (routes.length === 0) throw new Error("NO_ACTIVE_ROUTE");
 
     return this.semaphore.run(async () => {
@@ -49,7 +58,7 @@ export class VisionService {
       for (const route of routes) {
         try {
           const text = await callOllama(route, imageBase64, input.prompt);
-          return { text, capabilityKey, requestId };
+          return { text, capabilityKey: resolvedKey, requestId };
         } catch (error) {
           lastError = error instanceof Error ? error : new Error("OLLAMA_ERROR");
           if (!(error instanceof OllamaRequestError) || !error.retryable) break;

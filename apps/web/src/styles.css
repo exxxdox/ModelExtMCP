@@ -17,7 +17,7 @@
 body { margin: 0; min-width: 320px; min-height: 100vh; }
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
-button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 3px solid rgba(35, 94, 231, .25); outline-offset: 2px; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, a:focus-visible { outline: 3px solid rgba(35, 94, 231, .25); outline-offset: 2px; }
 
 .login-shell { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: linear-gradient(115deg, #e8eff7 0 48%, #d8e4f0 48% 52%, #f4f7fa 52%); }
 .login-panel { width: min(680px, 100%); padding: clamp(32px, 6vw, 72px); background: rgba(255,255,255,.94); border: 1px solid #c6d2df; box-shadow: 0 30px 80px rgba(34, 58, 86, .14); }
@@ -44,28 +44,61 @@ button:disabled { opacity: .55; cursor: wait; }
 button.secondary, .text-button, .row-actions button { color: #28405c; background: white; border: 1px solid #b9c7d7; }
 button.secondary:hover, .text-button:hover, .row-actions button:hover { color: var(--blue); border-color: #7d9fcb; background: #f5f8fc; }
 
-.topbar { height: 68px; display: flex; align-items: center; justify-content: space-between; padding: 0 max(24px, calc((100vw - 1240px) / 2)); background: #f8fafc; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
+.topbar { min-height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 max(24px, calc((100vw - 1240px) / 2)); background: #f8fafc; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
 .brand, .top-actions { display: flex; align-items: center; gap: 13px; }
-.brand strong { letter-spacing: -.02em; }
-.text-button { border: 0; padding-inline: 8px; }
-.health { color: #8a631a; background: #fff3d7; padding: 6px 10px; border-radius: 20px; font-size: 13px; font-weight: 650; }
+.brand strong { letter-spacing: -.02em; white-space: nowrap; }
+.text-button { border: 0; padding-inline: 8px; white-space: nowrap; }
+.health { color: #8a631a; background: #fff3d7; padding: 6px 10px; border-radius: 20px; font-size: 13px; font-weight: 650; white-space: nowrap; }
 .health.ready { color: #086355; background: #dff5ef; }
-.workspace { width: min(1240px, calc(100% - 48px)); margin: 0 auto; padding: 58px 0 90px; }
-.intro { display: flex; align-items: end; justify-content: space-between; gap: 28px; }
-.intro h1 { margin: 0; font-size: clamp(34px, 5vw, 58px); line-height: 1; letter-spacing: -.05em; }
-.intro p:not(.kicker) { color: var(--muted); max-width: 680px; margin: 17px 0 0; line-height: 1.6; }
 
-.route-rail { margin: 42px 0 56px; padding: 20px; background: #22354b; color: white; display: grid; grid-template-columns: 1fr 54px 1fr 54px 1fr 54px 1fr; align-items: center; border-radius: 7px; }
+/* 页面切换用 hash 链接，激活态用下划线，避免与顶部状态胶囊争夺视线。 */
+.page-nav { display: flex; gap: 2px; flex: 1; min-width: 0; overflow-x: auto; }
+.page-nav a { padding: 9px 12px; color: #45566b; text-decoration: none; font-weight: 650; border-bottom: 2px solid transparent; white-space: nowrap; }
+.page-nav a:hover { color: var(--blue); }
+.page-nav a.active { color: var(--blue-dark); border-bottom-color: var(--blue); }
+
+.workspace { width: min(1240px, calc(100% - 48px)); margin: 0 auto; padding: 42px 0 90px; }
+
+/* 页面头：拆页后每个页面自带标题与说明，替代原先单页的大标题区。 */
+.page-head { display: flex; align-items: end; justify-content: space-between; gap: 28px; }
+.page-head h1 { margin: 0; font-size: clamp(30px, 4.2vw, 46px); line-height: 1.04; letter-spacing: -.045em; }
+.page-head p { color: var(--muted); max-width: 680px; margin: 14px 0 0; line-height: 1.6; }
+.page-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+.stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-top: 34px; }
+.stat-card { padding: 18px 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 7px; }
+.stat-card span { color: var(--muted); font-size: 13px; }
+.stat-card strong { display: block; margin: 8px 0 6px; font-size: 27px; letter-spacing: -.03em; }
+.stat-card p { margin: 0; color: var(--muted); font-size: 12px; }
+.stat-card.on { box-shadow: inset 3px 0 0 #13a58f; }
+.stat-card.off { box-shadow: inset 3px 0 0 #d9ab35; }
+
+.route-rail { margin: 26px 0 40px; padding: 20px; background: #22354b; color: white; display: grid; grid-template-columns: 1fr 54px 1fr 54px 1fr 54px 1fr; align-items: center; border-radius: 7px; }
 .route-rail > div { padding: 10px 14px; }
 .route-rail span { display: block; color: #aebed0; font-size: 13px; margin-bottom: 5px; }
 .route-rail strong { font-size: 16px; }
 .route-rail i { height: 1px; background: #7291b3; position: relative; }
 .route-rail i::after { content: ""; position: absolute; right: 0; top: -3px; border-left: 6px solid #7291b3; border-top: 3px solid transparent; border-bottom: 3px solid transparent; }
-.notice { display: flex; justify-content: space-between; align-items: center; margin: -30px 0 32px; padding: 12px 15px; color: #17426e; background: #e4effc; border-left: 3px solid var(--blue); }
+
+.notice { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 0 0 28px; padding: 12px 15px; color: #17426e; background: #e4effc; border-left: 3px solid var(--blue); }
 .notice button { color: #17426e; background: transparent; padding: 0 5px; font-size: 20px; }
 
-.config-section { margin-top: 44px; }
-.security-section { margin-top: 0; }
+/* 链路未就绪时的下一步提示，只在控制台出现。 */
+.next-step { display: flex; align-items: center; justify-content: space-between; gap: 22px; margin-top: 30px; padding: 20px 22px; background: #fff8e6; border: 1px solid #e8d69a; border-left: 3px solid #d9ab35; border-radius: 7px; }
+.next-step h2 { margin: 0 0 5px; font-size: 17px; }
+.next-step p { margin: 0; color: #6d5a2a; }
+.next-step button { flex: none; }
+
+.mcp-body { padding: 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 7px; }
+.mcp-endpoint { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.mcp-endpoint span { color: var(--muted); font-size: 13px; }
+.mcp-endpoint code { overflow-wrap: anywhere; }
+.mcp-code { margin: 16px 0 0; padding: 16px; overflow-x: auto; background: #1f2c3d; border-radius: 6px; }
+.mcp-code code { display: block; width: max-content; min-width: 100%; padding: 0; color: #e6eef8; background: transparent; font-size: 13px; line-height: 1.65; }
+.mcp-hint { margin: 12px 0 0; color: var(--muted); font-size: 12px; }
+.mcp-body .empty { margin: 0; padding: 22px; border: 1px dashed var(--line); border-radius: 6px; }
+
+.config-section { margin-top: 40px; }
 .credential-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .credential { padding: 20px; background: white; border: 1px solid var(--line); border-radius: 7px; }
 .credential h3 { margin: 0; font-size: 17px; }
@@ -77,13 +110,18 @@ button.secondary:hover, .text-button:hover, .row-actions button:hover { color: v
 .credential-actions button { padding: 7px 11px; font-size: 13px; }
 .credential-actions .rotate { margin-left: auto; background: #334b67; }
 .credential-actions .rotate:hover { background: #21374f; }
-.runtime-section { margin-top: 28px; }
+
 .runtime-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 18px; align-items: end; padding: 20px; background: white; border: 1px solid var(--line); border-radius: 7px; }
+/* 网络开关与两个数值字段同属一次保存，因此占满整行放在最前。 */
+.runtime-access { grid-column: 1 / -1; padding-bottom: 16px; border-bottom: 1px solid #e0e7ef; }
+.runtime-access .check { margin: 0 0 6px; font-weight: 650; }
+.runtime-access small { display: block; margin-top: 5px; color: var(--muted); line-height: 1.5; max-width: 900px; }
 .runtime-form .field { margin: 0; }
 .runtime-form small { display: block; min-height: 34px; margin-top: 7px; color: var(--muted); line-height: 1.4; }
 .runtime-save { min-width: 150px; }
 .runtime-save button { width: 100%; margin-bottom: 34px; }
 .runtime-save .form-error { margin: 0 0 8px; }
+
 .section-heading { display: flex; justify-content: space-between; align-items: end; gap: 24px; margin-bottom: 14px; }
 .section-heading h2 { margin: 0; font-size: 23px; letter-spacing: -.025em; }
 .section-heading p { margin: 4px 0 0; color: var(--muted); }
@@ -135,16 +173,36 @@ code { color: #254d78; background: #edf3f9; border-radius: 3px; padding: 3px 6px
 .check { display: flex; align-items: center; gap: 9px; margin: 18px 0; font-size: 14px; }
 .check input { width: 17px; height: 17px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 24px; }
+.field-hint { margin: -10px 0 18px; color: var(--muted); font-size: 12px; line-height: 1.55; }
+
+/* 编辑器里的只读定义区：与可编辑字段用分隔线区分，避免看起来能改。 */
+.contract { margin-top: 24px; padding-top: 20px; border-top: 1px dashed var(--line); }
+.contract h3 { margin: 0 0 12px; font-size: 15px; }
+.contract-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin: 0 0 12px; }
+.contract-facts dt { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+.contract-facts dd { margin: 0; }
+.contract-note { margin: 0 0 14px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.param-table { min-width: 0; border: 1px solid var(--line); border-radius: 6px; }
+.param-table th, .param-table td { padding: 9px 11px; font-size: 12px; }
+.param-table td:last-child, .param-table th:last-child { text-align: left; }
 .form-error { color: var(--red); background: #fff0f0; padding: 10px 12px; border-left: 3px solid var(--red); }
 
+@media (max-width: 980px) {
+  .topbar { flex-wrap: wrap; padding: 12px max(24px, calc((100vw - 1240px) / 2)); }
+  .page-nav { order: 3; flex-basis: 100%; margin: 0; }
+  .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 @media (max-width: 760px) {
-  .login-row, .intro, .section-heading { align-items: stretch; flex-direction: column; }
-  .workspace { width: min(100% - 28px, 1240px); padding-top: 36px; }
-  .topbar { padding: 0 14px; }
+  .login-row, .page-head, .section-heading { align-items: stretch; flex-direction: column; }
+  .workspace { width: min(100% - 28px, 1240px); padding-top: 30px; }
+  .topbar { padding: 12px 14px; }
   .health { display: none; }
+  .page-actions { justify-content: flex-start; }
   .route-rail { grid-template-columns: 1fr; gap: 0; }
   .route-rail i { width: 1px; height: 20px; margin-left: 20px; }
   .route-rail i::after { right: -3px; top: auto; bottom: 0; border-top: 6px solid #7291b3; border-left: 3px solid transparent; border-right: 3px solid transparent; border-bottom: 0; }
+  .next-step { flex-direction: column; align-items: stretch; }
   .section-heading button { align-self: flex-start; }
   .section-actions { justify-content: flex-start; }
   .credential-grid { grid-template-columns: 1fr; }

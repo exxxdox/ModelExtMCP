@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsc -b && vite build",
     "dev": "vite --host 0.0.0.0",
-    "test": "echo \"No web tests yet\"",
+    "test": "node --import tsx --test --test-isolation=none src/*.test.ts",
     "typecheck": "tsc -b --pretty false"
   },
   "dependencies": {
@@ -17,7 +17,9 @@
     "react-dom": "19.2.0"
   },
   "devDependencies": {
+    "@types/node": "24.7.2",
     "@types/react": "19.2.2",
-    "@types/react-dom": "19.2.2"
+    "@types/react-dom": "19.2.2",
+    "tsx": "4.20.6"
   }
 }

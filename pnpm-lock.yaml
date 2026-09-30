@@ -54,12 +54,18 @@ importers:
         specifier: 7.1.9
         version: 7.1.9(@types/node@24.7.2)(tsx@4.20.6)
     devDependencies:
+      '@types/node':
+        specifier: 24.7.2
+        version: 24.7.2
       '@types/react':
         specifier: 19.2.2
         version: 19.2.2
       '@types/react-dom':
         specifier: 19.2.2
         version: 19.2.2(@types/react@19.2.2)
+      tsx:
+        specifier: 4.20.6
+        version: 4.20.6
 
 packages:
 

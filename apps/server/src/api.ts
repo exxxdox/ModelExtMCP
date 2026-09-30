@@ -1,7 +1,9 @@
 import { timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response, Router } from "express";
 import { z } from "zod";
+import { findCapabilityDefinition, viewCapabilityDefinition, type CapabilityDefinitionView } from "./capabilities.js";
 import type { AppDatabase, CredentialKind } from "./database.js";
+import type { Capability } from "./domain.js";
 import { testOllamaEndpoint } from "./ollama.js";
 
 const capabilitySchema = z.object({
@@ -36,7 +38,8 @@ const routeSchema = z.object({
 
 const runtimeSettingsSchema = z.object({
   maxImageBytes: z.number().int().min(1_024).max(50 * 1_024 * 1_024),
-  maxConcurrentRequests: z.number().int().min(1).max(32)
+  maxConcurrentRequests: z.number().int().min(1).max(32),
+  allowNetworkAccess: z.boolean()
 });
 
 export function normalizeOllamaUrl(value: string): string {
@@ -70,6 +73,12 @@ export function bearerAuth(expectedToken: string | (() => string)) {
   };
 }
 
+/** 只读的代码侧定义与数据库行合并后返回，管理端据此展示参数等不可编辑信息。 */
+function toCapabilityView(capability: Capability): Capability & { definition: CapabilityDefinitionView | null } {
+  const definition = findCapabilityDefinition(capability.definitionKey);
+  return { ...capability, definition: definition ? viewCapabilityDefinition(definition) : null };
+}
+
 export function registerAdminApi(router: Router, database: AppDatabase): void {
   router.get("/settings", (_request, response) => response.json(database.getRuntimeSettings()));
   router.put("/settings", (request, response) => {
@@ -82,15 +91,11 @@ export function registerAdminApi(router: Router, database: AppDatabase): void {
     response.json(database.rotateCredential(kind));
   });
 
-  router.get("/capabilities", (_request, response) => response.json(database.listCapabilities()));
-  router.post("/capabilities", (request, response) => response.status(201).json(database.createCapability(capabilitySchema.parse(request.body))));
+  // 能力集合由代码注册表决定：没有新增与删除，只允许改名称、标识、描述与启用状态。
+  router.get("/capabilities", (_request, response) => response.json(database.listCapabilities().map(toCapabilityView)));
   router.put("/capabilities/:id", (request, response) => {
     const input = capabilitySchema.extend({ version: z.number().int().positive() }).parse(request.body);
-    response.json(database.updateCapability(request.params.id!, input));
-  });
-  router.delete("/capabilities/:id", (request, response) => {
-    database.deleteCapability(request.params.id!);
-    response.status(204).end();
+    response.json(toCapabilityView(database.updateCapability(request.params.id!, input)));
   });
 
   router.get("/endpoints", (_request, response) => response.json(database.listEndpoints()));

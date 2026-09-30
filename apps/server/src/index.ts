@@ -1,7 +1,9 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { toNodeHandler } from "@modelcontextprotocol/node";
 import express from "express";
+import { collectLocalNetworks, createLocalNetworkChecker, createMcpAccessGuard } from "./access.js";
 import { apiErrorHandler, bearerAuth, registerAdminApi } from "./api.js";
 import { loadConfig } from "./config.js";
 import { AppDatabase } from "./database.js";
@@ -39,8 +41,14 @@ registerAdminApi(adminRouter, database);
 adminRouter.use((_request, response) => response.status(404).json({ error: { code: "NOT_FOUND", message: "接口不存在" } }));
 app.use("/api/v1", adminRouter);
 
+// 本机网段在启动时采集一次：接口地址不会在运行中变化，且避免每个请求都读网卡。
+const mcpAccessGuard = createMcpAccessGuard({
+  isLocal: createLocalNetworkChecker(collectLocalNetworks(os.networkInterfaces())),
+  isNetworkAccessAllowed: () => database.isNetworkAccessAllowed()
+});
+
 const mcpNodeHandler = toNodeHandler(createVisionMcpHandler(service));
-app.all("/mcp", bearerAuth(() => database.getCredential("mcp").token), (request, response) => {
+app.all("/mcp", bearerAuth(() => database.getCredential("mcp").token), mcpAccessGuard, (request, response) => {
   void mcpNodeHandler(request, response, request.body);
 });
 

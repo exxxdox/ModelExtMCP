@@ -1,5 +1,8 @@
 export type Capability = {
   id: string;
+  /** 代码内置标识（不可变），与注册表中的 definitionKey 对应。 */
+  definitionKey: string;
+  /** Agent 可见标识，可由管理员修改。 */
   key: string;
   name: string;
   description: string;
