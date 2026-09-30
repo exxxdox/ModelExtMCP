@@ -87,6 +87,7 @@ button.secondary:hover, .text-button:hover, .row-actions button:hover { color: v
 .section-heading { display: flex; justify-content: space-between; align-items: end; gap: 24px; margin-bottom: 14px; }
 .section-heading h2 { margin: 0; font-size: 23px; letter-spacing: -.025em; }
 .section-heading p { margin: 4px 0 0; color: var(--muted); }
+.section-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .table-wrap { overflow-x: auto; border: 1px solid var(--line); background: var(--surface); border-radius: 7px; }
 table { width: 100%; border-collapse: collapse; min-width: 720px; }
 th, td { padding: 15px 17px; text-align: left; border-bottom: 1px solid #e0e7ef; font-size: 14px; }
@@ -103,7 +104,24 @@ code { color: #254d78; background: #edf3f9; border-radius: 3px; padding: 3px 6px
 .row-actions { display: inline-flex; gap: 6px; }
 .row-actions button { padding: 6px 9px; font-size: 13px; }
 .row-actions button.danger { color: var(--red); }
+.connection { font-size: 13px; color: var(--muted); }
+.connection.testing { color: #315f93; }
+.connection.success { color: var(--teal); }
+.connection.error { color: var(--red); }
 .empty { padding: 34px; text-align: center !important; color: var(--muted); }
+.discovered-models { margin-top: 12px; padding: 18px; background: #f7f9fc; border: 1px solid var(--line); border-radius: 7px; }
+.discovered-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.discovered-heading h3 { margin: 0; font-size: 16px; }
+.discovered-heading span { color: var(--muted); font-size: 13px; }
+.discovered-empty { margin: 16px 0 0; color: var(--muted); }
+.model-chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+.model-chip { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 12px; background: white; border: 1px solid #d8e1eb; border-radius: 5px; }
+.model-chip > div { min-width: 0; }
+.model-chip strong, .model-chip span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-chip span { margin-top: 3px; color: var(--muted); font-size: 12px; }
+.model-chip button { flex: none; padding: 7px 10px; font-size: 12px; }
+.model-chip .danger-text { color: var(--red); background: transparent; border: 1px solid #e4bcbc; }
+.model-chip .danger-text:hover { background: #fff1f1; }
 
 .modal-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 22px; background: rgba(18, 31, 46, .52); backdrop-filter: blur(3px); }
 .modal { width: min(560px, 100%); max-height: calc(100vh - 44px); overflow-y: auto; background: white; border-radius: 8px; box-shadow: 0 30px 90px rgba(7, 24, 44, .3); }
@@ -128,9 +146,11 @@ code { color: #254d78; background: #edf3f9; border-radius: 3px; padding: 3px 6px
   .route-rail i { width: 1px; height: 20px; margin-left: 20px; }
   .route-rail i::after { right: -3px; top: auto; bottom: 0; border-top: 6px solid #7291b3; border-left: 3px solid transparent; border-right: 3px solid transparent; border-bottom: 0; }
   .section-heading button { align-self: flex-start; }
+  .section-actions { justify-content: flex-start; }
   .credential-grid { grid-template-columns: 1fr; }
   .runtime-form { grid-template-columns: 1fr; }
   .runtime-save button { margin-bottom: 0; }
+  .model-chips { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }

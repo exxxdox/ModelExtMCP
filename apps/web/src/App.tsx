@@ -28,6 +28,9 @@ type Route = {
 };
 type Credential = { kind: "admin" | "mcp"; token: string; updatedAt: string };
 type RuntimeSettings = { maxImageBytes: number; maxConcurrentRequests: number; updatedAt: string };
+type EndpointTestResult = { ok: true; models: string[] };
+type EndpointTestState = { kind: "testing" | "success" | "error"; text: string };
+type DiscoveredModel = { endpointId: string; endpointName: string; modelName: string };
 type ResourceName = "capabilities" | "endpoints" | "deployments" | "routes";
 type EditorState = { resource: ResourceName; id?: string } | null;
 
@@ -42,6 +45,9 @@ export function App() {
   const [routes, setRoutes] = useState<Route[]>([]);
   const [credentials, setCredentials] = useState<Credential[]>([]);
   const [runtimeSettings, setRuntimeSettings] = useState<RuntimeSettings | null>(null);
+  const [endpointTests, setEndpointTests] = useState<Record<string, EndpointTestState>>({});
+  const [discoveredModels, setDiscoveredModels] = useState<DiscoveredModel[] | null>(null);
+  const [refreshingModels, setRefreshingModels] = useState(false);
   const [revealedCredentials, setRevealedCredentials] = useState<Set<Credential["kind"]>>(() => new Set());
   const [editor, setEditor] = useState<EditorState>(null);
   const [loading, setLoading] = useState(false);
@@ -139,6 +145,72 @@ export function App() {
     }
   }
 
+  async function testEndpoint(endpoint: Endpoint): Promise<void> {
+    setEndpointTests((current) => ({ ...current, [endpoint.id]: { kind: "testing", text: "测试中…" } }));
+    try {
+      const result = await api<EndpointTestResult>("endpoints/test", {
+        method: "POST",
+        body: JSON.stringify({ baseUrl: endpoint.baseUrl })
+      });
+      setEndpointTests((current) => ({
+        ...current,
+        [endpoint.id]: { kind: "success", text: `连接正常，发现 ${result.models.length} 个模型` }
+      }));
+    } catch (error) {
+      setEndpointTests((current) => ({
+        ...current,
+        [endpoint.id]: { kind: "error", text: error instanceof Error ? error.message : "连接失败" }
+      }));
+    }
+  }
+
+  async function refreshModelList(): Promise<void> {
+    const activeEndpoints = endpoints.filter((endpoint) => endpoint.enabled);
+    if (activeEndpoints.length === 0) {
+      setMessage("请先添加并启用一个 Ollama 端点");
+      return;
+    }
+    setRefreshingModels(true);
+    try {
+      const results = await Promise.allSettled(activeEndpoints.map(async (endpoint) => ({
+        endpoint,
+        result: await api<EndpointTestResult>("endpoints/test", {
+          method: "POST",
+          body: JSON.stringify({ baseUrl: endpoint.baseUrl })
+        })
+      })));
+      const nextModels = results.flatMap((result) => result.status === "fulfilled"
+        ? result.value.result.models.map((modelName) => ({ endpointId: result.value.endpoint.id, endpointName: result.value.endpoint.name, modelName }))
+        : []);
+      setDiscoveredModels(nextModels);
+      const failedCount = results.filter((result) => result.status === "rejected").length;
+      setMessage(failedCount > 0
+        ? `已刷新 ${activeEndpoints.length - failedCount} 个端点，${failedCount} 个端点连接失败`
+        : `模型列表已刷新，共发现 ${nextModels.length} 个模型`);
+    } finally {
+      setRefreshingModels(false);
+    }
+  }
+
+  async function addDiscoveredModel(model: DiscoveredModel): Promise<void> {
+    try {
+      await api<Deployment>("deployments", {
+        method: "POST",
+        body: JSON.stringify({
+          endpointId: model.endpointId,
+          modelName: model.modelName,
+          supportsVision: true,
+          timeoutMs: 60_000,
+          enabled: true
+        })
+      });
+      setMessage(`${model.modelName} 已添加为视觉模型`);
+      await refresh();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "添加模型失败");
+    }
+  }
+
   function signIn(event: FormEvent): void {
     event.preventDefault();
     const next = draftToken.trim();
@@ -230,18 +302,19 @@ export function App() {
 
         <section className="config-section">
           <SectionHeader title="Ollama 端点" description="可访问的 Ollama 服务根地址。" action="新增端点" onAdd={() => setEditor({ resource: "endpoints" })} />
-          <div className="table-wrap"><table><thead><tr><th>名称</th><th>地址</th><th>状态</th><th /></tr></thead><tbody>
-            {endpoints.length === 0 && <EmptyRow columns={4} text="先添加一个 Ollama 端点" />}
-            {endpoints.map((item) => <tr key={item.id}><td className="strong">{item.name}</td><td><code>{item.baseUrl}</code></td><td><Status enabled={item.enabled} /></td><td><RowActions onEdit={() => setEditor({ resource: "endpoints", id: item.id })} onDelete={() => void remove("endpoints", item.id)} /></td></tr>)}
+          <div className="table-wrap"><table><thead><tr><th>名称</th><th>地址</th><th>状态</th><th>连接</th><th /></tr></thead><tbody>
+            {endpoints.length === 0 && <EmptyRow columns={5} text="先添加一个 Ollama 端点" />}
+            {endpoints.map((item) => { const test = endpointTests[item.id]; return <tr key={item.id}><td className="strong">{item.name}</td><td><code>{item.baseUrl}</code></td><td><Status enabled={item.enabled} /></td><td><span className={`connection ${test?.kind ?? "idle"}`}>{test?.text ?? "尚未测试"}</span></td><td><div className="row-actions"><button onClick={() => void testEndpoint(item)} disabled={test?.kind === "testing"}>测试连接</button><button onClick={() => setEditor({ resource: "endpoints", id: item.id })}>编辑</button><button className="danger" onClick={() => void remove("endpoints", item.id)}>删除</button></div></td></tr>; })}
           </tbody></table></div>
         </section>
 
         <section className="config-section">
-          <SectionHeader title="模型部署" description="端点上的具体视觉模型及超时设置。" action="新增模型" onAdd={() => setEditor({ resource: "deployments" })} />
+          <SectionHeader title="模型部署" description="端点上的具体视觉模型及超时设置。" action="新增模型" onAdd={() => setEditor({ resource: "deployments" })} secondaryAction={refreshingModels ? "刷新中…" : "刷新模型列表"} onSecondary={() => void refreshModelList()} secondaryDisabled={refreshingModels} />
           <div className="table-wrap"><table><thead><tr><th>模型</th><th>端点</th><th>超时</th><th>视觉</th><th>状态</th><th /></tr></thead><tbody>
             {deployments.length === 0 && <EmptyRow columns={6} text="添加端点后，再登记视觉模型" />}
             {deployments.map((item) => <tr key={item.id}><td className="strong">{item.modelName}</td><td>{endpointMap.get(item.endpointId)?.name ?? "未知端点"}</td><td>{Math.round(item.timeoutMs / 1000)} 秒</td><td>{item.supportsVision ? "支持" : "未验证"}</td><td><Status enabled={item.enabled} /></td><td><RowActions onEdit={() => setEditor({ resource: "deployments", id: item.id })} onDelete={() => void remove("deployments", item.id)} /></td></tr>)}
           </tbody></table></div>
+          {discoveredModels && <DiscoveredModels models={discoveredModels} deployments={deployments} onAdd={addDiscoveredModel} onDelete={(deploymentId) => remove("deployments", deploymentId)} />}
         </section>
 
         <section className="config-section">
@@ -274,8 +347,19 @@ function EmptyRow({ columns, text }: { columns: number; text: string }) {
   return <tr><td colSpan={columns} className="empty">{text}</td></tr>;
 }
 
-function SectionHeader({ title, description, action, onAdd }: { title: string; description: string; action?: string; onAdd?: () => void }) {
-  return <div className="section-heading"><div><h2>{title}</h2><p>{description}</p></div>{action && onAdd && <button className="secondary" onClick={onAdd}>＋ {action}</button>}</div>;
+function SectionHeader({ title, description, action, onAdd, secondaryAction, onSecondary, secondaryDisabled }: { title: string; description: string; action?: string; onAdd?: () => void; secondaryAction?: string; onSecondary?: () => void; secondaryDisabled?: boolean }) {
+  return <div className="section-heading"><div><h2>{title}</h2><p>{description}</p></div><div className="section-actions">{secondaryAction && onSecondary && <button className="secondary" onClick={onSecondary} disabled={secondaryDisabled}>{secondaryAction}</button>}{action && onAdd && <button className="secondary" onClick={onAdd}>＋ {action}</button>}</div></div>;
+}
+
+function DiscoveredModels({ models, deployments, onAdd, onDelete }: { models: DiscoveredModel[]; deployments: Deployment[]; onAdd: (model: DiscoveredModel) => Promise<void>; onDelete: (deploymentId: string) => Promise<void> }) {
+  const deploymentMap = new Map(deployments.map((deployment) => [`${deployment.endpointId}:${deployment.modelName}`, deployment]));
+  return <div className="discovered-models">
+    <div className="discovered-heading"><h3>Ollama 模型列表</h3><span>{models.length} 个</span></div>
+    {models.length === 0 ? <p className="discovered-empty">启用的端点未返回任何模型。</p> : <div className="model-chips">{models.map((model) => {
+      const deployment = deploymentMap.get(`${model.endpointId}:${model.modelName}`);
+      return <div className="model-chip" key={`${model.endpointId}:${model.modelName}`}><div><strong>{model.modelName}</strong><span>{model.endpointName}</span></div>{deployment ? <button className="danger-text" onClick={() => void onDelete(deployment.id)}>删除配置</button> : <button onClick={() => void onAdd(model)}>添加为视觉模型</button>}</div>;
+    })}</div>}
+  </div>;
 }
 
 function RuntimeSettingsPanel({ settings, api, onSaved }: { settings: RuntimeSettings; api: <T>(path: string, init?: RequestInit) => Promise<T>; onSaved: (settings: RuntimeSettings) => void }) {
