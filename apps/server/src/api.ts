@@ -1,0 +1,149 @@
+import { timingSafeEqual } from "node:crypto";
+import type { NextFunction, Request, Response, Router } from "express";
+import { z } from "zod";
+import type { AppDatabase, CredentialKind } from "./database.js";
+import { testOllamaEndpoint } from "./ollama.js";
+
+const capabilitySchema = z.object({
+  key: z.string().trim().min(2).max(80).regex(/^[a-z][a-z0-9._-]+$/),
+  name: z.string().trim().min(1).max(80),
+  description: z.string().trim().min(1).max(500),
+  enabled: z.boolean().default(true),
+  version: z.number().int().positive().optional()
+});
+
+const endpointSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  baseUrl: z.string().url().transform(normalizeOllamaUrl),
+  enabled: z.boolean().default(true)
+});
+
+const deploymentSchema = z.object({
+  endpointId: z.string().uuid(),
+  modelName: z.string().trim().min(1).max(160),
+  supportsVision: z.boolean().default(true),
+  timeoutMs: z.number().int().min(1_000).max(300_000).default(60_000),
+  enabled: z.boolean().default(true)
+});
+
+const routeSchema = z.object({
+  capabilityId: z.string().uuid(),
+  deploymentId: z.string().uuid(),
+  priority: z.number().int().min(0).max(10_000).default(100),
+  promptTemplate: z.string().trim().min(1).max(4_000),
+  enabled: z.boolean().default(true)
+});
+
+const runtimeSettingsSchema = z.object({
+  maxImageBytes: z.number().int().min(1_024).max(50 * 1_024 * 1_024),
+  maxConcurrentRequests: z.number().int().min(1).max(32)
+});
+
+export function normalizeOllamaUrl(value: string): string {
+  const url = new URL(value);
+  if (!(["http:", "https:"] as string[]).includes(url.protocol)) throw new Error("仅支持 HTTP 或 HTTPS");
+  if (url.username || url.password) throw new Error("URL 不能包含凭据");
+  if (url.pathname !== "/" && url.pathname !== "") throw new Error("请输入 Ollama 服务根地址");
+  url.pathname = "";
+  url.search = "";
+  url.hash = "";
+  return url.toString().replace(/\/$/, "");
+}
+
+function tokenMatches(actual: string | undefined, expected: string): boolean {
+  if (!actual) return false;
+  const actualBuffer = Buffer.from(actual);
+  const expectedBuffer = Buffer.from(expected);
+  return actualBuffer.length === expectedBuffer.length && timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
+export function bearerAuth(expectedToken: string | (() => string)) {
+  return (request: Request, response: Response, next: NextFunction): void => {
+    const authorization = request.header("authorization");
+    const token = authorization?.startsWith("Bearer ") ? authorization.slice(7) : undefined;
+    const currentToken = typeof expectedToken === "function" ? expectedToken() : expectedToken;
+    if (!tokenMatches(token, currentToken)) {
+      response.status(401).json({ error: { code: "UNAUTHORIZED", message: "访问凭据无效" } });
+      return;
+    }
+    next();
+  };
+}
+
+export function registerAdminApi(router: Router, database: AppDatabase): void {
+  router.get("/settings", (_request, response) => response.json(database.getRuntimeSettings()));
+  router.put("/settings", (request, response) => {
+    response.json(database.updateRuntimeSettings(runtimeSettingsSchema.parse(request.body)));
+  });
+
+  router.get("/security", (_request, response) => response.json(database.listCredentials()));
+  router.post("/security/:kind/rotate", (request, response) => {
+    const kind = z.enum(["admin", "mcp"]).parse(request.params.kind) as CredentialKind;
+    response.json(database.rotateCredential(kind));
+  });
+
+  router.get("/capabilities", (_request, response) => response.json(database.listCapabilities()));
+  router.post("/capabilities", (request, response) => response.status(201).json(database.createCapability(capabilitySchema.parse(request.body))));
+  router.put("/capabilities/:id", (request, response) => {
+    const input = capabilitySchema.extend({ version: z.number().int().positive() }).parse(request.body);
+    response.json(database.updateCapability(request.params.id!, input));
+  });
+  router.delete("/capabilities/:id", (request, response) => {
+    database.deleteCapability(request.params.id!);
+    response.status(204).end();
+  });
+
+  router.get("/endpoints", (_request, response) => response.json(database.listEndpoints()));
+  router.post("/endpoints", (request, response) => response.status(201).json(database.createEndpoint(endpointSchema.parse(request.body))));
+  router.put("/endpoints/:id", (request, response) => response.json(database.updateEndpoint(request.params.id!, endpointSchema.parse(request.body))));
+  router.delete("/endpoints/:id", (request, response) => {
+    database.deleteEndpoint(request.params.id!);
+    response.status(204).end();
+  });
+  router.post("/endpoints/test", async (request, response, next) => {
+    try {
+      const { baseUrl } = endpointSchema.pick({ baseUrl: true }).parse(request.body);
+      response.json(await testOllamaEndpoint(baseUrl));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/deployments", (_request, response) => response.json(database.listDeployments()));
+  router.post("/deployments", (request, response) => response.status(201).json(database.createDeployment(deploymentSchema.parse(request.body))));
+  router.put("/deployments/:id", (request, response) => response.json(database.updateDeployment(request.params.id!, deploymentSchema.parse(request.body))));
+  router.delete("/deployments/:id", (request, response) => {
+    database.deleteDeployment(request.params.id!);
+    response.status(204).end();
+  });
+
+  router.get("/routes", (_request, response) => response.json(database.listRoutes()));
+  router.post("/routes", (request, response) => response.status(201).json(database.createRoute(routeSchema.parse(request.body))));
+  router.put("/routes/:id", (request, response) => response.json(database.updateRoute(request.params.id!, routeSchema.parse(request.body))));
+  router.delete("/routes/:id", (request, response) => {
+    database.deleteRoute(request.params.id!);
+    response.status(204).end();
+  });
+}
+
+export function apiErrorHandler(error: unknown, _request: Request, response: Response, _next: NextFunction): void {
+  if (error instanceof z.ZodError) {
+    response.status(400).json({ error: { code: "VALIDATION_ERROR", message: error.issues[0]?.message ?? "输入无效" } });
+    return;
+  }
+  const message = error instanceof Error ? error.message : "INTERNAL_ERROR";
+  if (message === "NOT_FOUND") {
+    response.status(404).json({ error: { code: message, message: "记录不存在" } });
+    return;
+  }
+  if (message === "VERSION_CONFLICT") {
+    response.status(409).json({ error: { code: message, message: "配置已被其他会话更新，请刷新后重试" } });
+    return;
+  }
+  const sqliteCode = typeof error === "object" && error !== null && "code" in error ? String(error.code) : "";
+  if (sqliteCode.includes("CONSTRAINT") || message.includes("constraint failed")) {
+    response.status(409).json({ error: { code: "CONFLICT", message: "记录重复或仍被其他配置引用" } });
+    return;
+  }
+  response.status(502).json({ error: { code: "UPSTREAM_ERROR", message: "Ollama 服务连接或响应异常" } });
+}

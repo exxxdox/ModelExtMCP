@@ -1,0 +1,13 @@
+services:
+  model-ext-mcp:
+    build: .
+    image: model-ext-mcp:local
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      # DATA_DIR 表示宿主机保存目录；容器内路径固定为 /data。
+      - "${DATA_DIR:-./data}:/data"
+    # Linux 容器通过此名称访问宿主机 Ollama；Docker Desktop 已原生支持。
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

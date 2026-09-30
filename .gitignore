@@ -1,0 +1,10 @@
+node_modules/
+dist/
+data/
+.env
+*.log
+*.tsbuildinfo
+apps/web/vite.config.js
+apps/web/vite.config.d.ts
+.DS_Store
+/compose.override.yaml

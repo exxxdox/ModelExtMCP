@@ -1,0 +1,6 @@
+packages:
+  - apps/*
+
+# pnpm 11 使用 allowBuilds 控制依赖安装脚本；esbuild 需要安装平台二进制。
+allowBuilds:
+  esbuild: true
