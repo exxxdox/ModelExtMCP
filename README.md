@@ -76,7 +76,7 @@ pnpm dev
 ## 健康检查
 
 - `/health/live`：进程存活，不依赖 Ollama。
-- `/health/ready`：数据库中至少存在一条完整启用的 `image.describe` 路由。
+- `/health/ready`：数据库中的默认能力至少存在一条完整启用的路由（默认能力指代码注册表里指定的那个，改过标识也照样认）。
 
 ## 安全边界
 

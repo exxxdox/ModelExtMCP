@@ -4,3 +4,5 @@ node_modules
 .env
 data
 *.log
+# CodeGraph 索引只在本机有用，约 2 MB，没必要每次构建都传给 daemon。
+.codegraph
