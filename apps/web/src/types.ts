@@ -30,6 +30,39 @@ export type Capability = {
   definition: CapabilityDefinition | null;
 };
 
+/** 发给 Ollama 的 chat 请求体，与服务端 buildOllamaRequest 的形状一致。 */
+export type ChatRequestPreview = {
+  model: string;
+  stream: boolean;
+  messages: Array<{ role: string; content: string; images?: string[] }>;
+};
+
+/** 一次能力测试里对某条路由的尝试记录：这些字段就是「实际参数」。 */
+export type CapabilityTestAttempt = {
+  priority: number;
+  endpointName: string;
+  baseUrl: string;
+  modelName: string;
+  timeoutMs: number;
+  requestUrl: string;
+  requestBody: ChatRequestPreview;
+  status: "ok" | "error";
+  errorCode?: string;
+  durationMs: number;
+  responseText?: string;
+};
+
+export type CapabilityTestOutcome = {
+  ok: boolean;
+  capabilityKey: string;
+  requestId: string;
+  input: { mimeType: string; prompt: string; imageBytes: number };
+  attempts: CapabilityTestAttempt[];
+  text?: string;
+  errorCode?: string;
+  totalMs: number;
+};
+
 export type Endpoint = { id: string; name: string; baseUrl: string; enabled: boolean };
 
 export type Deployment = {

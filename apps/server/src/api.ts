@@ -1,10 +1,11 @@
-import { timingSafeEqual } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response, Router } from "express";
 import { z } from "zod";
 import { findCapabilityDefinition, viewCapabilityDefinition, type CapabilityDefinitionView } from "./capabilities.js";
 import type { AppDatabase, CredentialKind } from "./database.js";
 import type { Capability } from "./domain.js";
-import { testOllamaEndpoint } from "./ollama.js";
+import { testOllamaEndpoint, type ImageInput } from "./ollama.js";
+import type { VisionService } from "./service.js";
 
 const capabilitySchema = z.object({
   key: z.string().trim().min(2).max(80).regex(/^[a-z][a-z0-9._-]+$/),
@@ -79,7 +80,7 @@ function toCapabilityView(capability: Capability): Capability & { definition: Ca
   return { ...capability, definition: definition ? viewCapabilityDefinition(definition) : null };
 }
 
-export function registerAdminApi(router: Router, database: AppDatabase): void {
+export function registerAdminApi(router: Router, database: AppDatabase, service: VisionService): void {
   router.get("/settings", (_request, response) => response.json(database.getRuntimeSettings()));
   router.put("/settings", (request, response) => {
     response.json(database.updateRuntimeSettings(runtimeSettingsSchema.parse(request.body)));
@@ -96,6 +97,25 @@ export function registerAdminApi(router: Router, database: AppDatabase): void {
   router.put("/capabilities/:id", (request, response) => {
     const input = capabilitySchema.extend({ version: z.number().int().positive() }).parse(request.body);
     response.json(toCapabilityView(database.updateCapability(request.params.id!, input)));
+  });
+
+  // 能力测试：拿代码里的静态样例输入去打真实链路。失败也返回 200 + 诊断，
+  // 因为「哪条路由、哪个模型、卡在哪一步」正是管理员点这个按钮想知道的东西。
+  router.post("/capabilities/:id/test", async (request, response, next) => {
+    try {
+      const capability = database.listCapabilities().find((item) => item.id === request.params.id);
+      if (!capability) throw new Error("NOT_FOUND");
+      const definition = findCapabilityDefinition(capability.definitionKey);
+      if (!definition) {
+        response.status(404).json({ error: { code: "NO_DEFINITION", message: "该能力的代码定义已不存在，无法测试" } });
+        return;
+      }
+      // 样例先过一遍能力自己的入参契约：样例漂移时在这里就暴露，而不是拿坏参数去打上游。
+      const input = definition.inputSchema.parse(definition.sampleInput) as ImageInput;
+      response.json(await service.testCapability(capability.key, input, randomUUID()));
+    } catch (error) {
+      next(error);
+    }
   });
 
   router.get("/endpoints", (_request, response) => response.json(database.listEndpoints()));

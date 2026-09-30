@@ -1,6 +1,8 @@
+import { useState } from "react";
+import { CapabilityTestDialog } from "../components/CapabilityTestDialog";
 import { EmptyRow, PageHeader, RowActions, SectionHeader, Status } from "../components/ui";
 import type { AdminData } from "../hooks/useAdminData";
-import type { ResourceName } from "../types";
+import type { Capability, ResourceName } from "../types";
 
 export type CapabilitiesPageProps = {
   data: AdminData;
@@ -9,6 +11,9 @@ export type CapabilitiesPageProps = {
 
 /** 能力设置：先定义 Agent 能调用的能力，再把能力绑到具体模型。 */
 export function CapabilitiesPage({ data, onOpenEditor }: CapabilitiesPageProps) {
+  // 测试弹窗自己持有目标能力：测试是「看一眼」的操作，不该进编辑器那套共享状态。
+  const [testing, setTesting] = useState<Capability | null>(null);
+
   return (
     <>
       <PageHeader title="能力设置" description="定义 Agent 可调用的能力标识，并决定每个能力最终由哪些模型提供。" />
@@ -27,7 +32,7 @@ export function CapabilitiesPage({ data, onOpenEditor }: CapabilitiesPageProps) 
                   <td>{item.description}</td>
                   <td>{item.definition ? <code>{item.definition.toolName}</code> : "—"}</td>
                   <td><Status enabled={item.enabled} /></td>
-                  <td><div className="row-actions"><button onClick={() => onOpenEditor("capabilities", item.id)}>编辑</button></div></td>
+                  <td><div className="row-actions"><button onClick={() => setTesting(item)}>测试</button><button onClick={() => onOpenEditor("capabilities", item.id)}>编辑</button></div></td>
                 </tr>
               ))}
             </tbody>
@@ -59,6 +64,8 @@ export function CapabilitiesPage({ data, onOpenEditor }: CapabilitiesPageProps) 
           </table>
         </div>
       </section>
+
+      {testing && <CapabilityTestDialog capability={testing} api={data.api} onClose={() => setTesting(null)} />}
     </>
   );
 }

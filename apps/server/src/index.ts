@@ -37,7 +37,7 @@ app.get("/health/ready", (_request, response) => {
 
 const adminRouter = express.Router();
 adminRouter.use(bearerAuth(() => database.getCredential("admin").token));
-registerAdminApi(adminRouter, database);
+registerAdminApi(adminRouter, database, service);
 adminRouter.use((_request, response) => response.status(404).json({ error: { code: "NOT_FOUND", message: "接口不存在" } }));
 app.use("/api/v1", adminRouter);
 

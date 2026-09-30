@@ -168,6 +168,23 @@ code { color: #254d78; background: #edf3f9; border-radius: 3px; padding: 3px 6px
 .modal-heading h2 { margin: 0; }
 .modal-heading button { padding: 0 6px; color: #536376; background: transparent; font-size: 28px; }
 .modal form { padding: 25px 28px 28px; }
+/* 测试弹窗要放下逐条尝试与请求体，比配置弹窗宽。它没有 form，所以自带内边距。 */
+.modal.wide { width: min(760px, 100%); }
+.modal-body { padding: 20px 28px 0; }
+.modal.wide .modal-actions { padding: 0 28px 28px; }
+.test-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+.test-toolbar .secondary { margin-left: auto; }
+.test-summary { font-size: 13px; color: var(--muted); }
+.test-summary.ok { color: var(--teal); font-weight: 650; }
+.test-section { margin: 0 0 20px; }
+.test-section h3 { margin: 0 0 10px; font-size: 14px; }
+.test-section > summary { cursor: pointer; font-size: 14px; font-weight: 650; margin-bottom: 10px; }
+.attempt { margin-bottom: 12px; padding: 14px; border: 1px solid var(--line); border-left: 3px solid var(--red); border-radius: 6px; }
+.attempt.ok { border-left-color: var(--teal); }
+.attempt header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; font-size: 13px; color: var(--muted); }
+.attempt header strong { color: var(--ink); }
+.attempt-label { margin: 12px 0 6px; color: var(--muted); font-size: 12px; }
+.attempt-body { margin: 0; padding: 10px 12px; max-height: 260px; overflow: auto; background: #f5f8fc; border-radius: 6px; font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; }
 .field { display: block; margin-bottom: 18px; }
 .field > span { display: block; margin-bottom: 7px; font-size: 14px; font-weight: 650; }
 .check { display: flex; align-items: center; gap: 9px; margin: 18px 0; font-size: 14px; }

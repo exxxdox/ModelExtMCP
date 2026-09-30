@@ -8,6 +8,7 @@ import { test } from "node:test";
 import express from "express";
 import { apiErrorHandler, bearerAuth, normalizeOllamaUrl, registerAdminApi } from "./api.js";
 import { AppDatabase } from "./database.js";
+import { VisionService } from "./service.js";
 
 test("normalizeOllamaUrl keeps only a safe service root", () => {
   assert.equal(normalizeOllamaUrl("http://ollama:11434/"), "http://ollama:11434");
@@ -27,7 +28,7 @@ async function startAdminApi(database: AppDatabase): Promise<AdminApiHarness> {
   app.use(express.json());
   const router = express.Router();
   router.use(bearerAuth(() => database.getCredential("admin").token));
-  registerAdminApi(router, database);
+  registerAdminApi(router, database, new VisionService(database));
   router.use((_request, response) => response.status(404).json({ error: { code: "NOT_FOUND", message: "接口不存在" } }));
   app.use("/api/v1", router);
   app.use(apiErrorHandler);
@@ -94,6 +95,30 @@ test("capability responses expose the code defaults so the console can restore t
     assert.equal(capability?.definition.defaultKey, "image.describe");
     assert.ok((capability?.definition.defaultName.length ?? 0) > 0);
     assert.ok((capability?.definition.defaultDescription.length ?? 0) > 0);
+  });
+});
+
+test("testing a capability runs the real path and reports why it could not finish", async () => {
+  await withAdminApi(async (api, database) => {
+    const [capability] = database.listCapabilities();
+    assert.ok(capability);
+
+    // 没有配置路由时，测试仍然返回诊断而不是抛错：管理端要看到「缺什么」。
+    const response = await api.request(`capabilities/${capability.id}/test`, { method: "POST", body: "{}" });
+    const body = await response.json() as { ok: boolean; errorCode: string; capabilityKey: string; input: { imageBytes: number } };
+
+    assert.equal(response.status, 200);
+    assert.equal(body.ok, false);
+    assert.equal(body.errorCode, "NO_ACTIVE_ROUTE");
+    assert.equal(body.capabilityKey, "image.describe");
+    assert.ok(body.input.imageBytes > 0, "样例图片必须随诊断一起回给管理端");
+  });
+});
+
+test("testing an unknown capability is a 404 rather than a silent empty run", async () => {
+  await withAdminApi(async (api) => {
+    const response = await api.request("capabilities/6f9c0a7e-0000-4000-8000-000000000000/test", { method: "POST", body: "{}" });
+    assert.equal(response.status, 404);
   });
 });
 

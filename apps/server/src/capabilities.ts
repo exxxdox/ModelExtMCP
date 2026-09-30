@@ -39,6 +39,14 @@ export type CapabilityDefinition = {
   executorType: "ollama_vision";
   toolName: string;
   inputSchema: ZodType;
+  /**
+   * 管理端「测试」按钮用的静态样例输入。
+   *
+   * 为什么写死在代码里而不是让管理员填：测试的前提是「点一下就出结果」，不该先要求
+   * 准备一张图。它必须能通过同一个 inputSchema，capabilities.test.ts 守住这条约束，
+   * 免得上游契约改了而样例悄悄失效。
+   */
+  sampleInput: Record<string, unknown>;
 };
 
 export type CapabilityParameter = {
@@ -61,6 +69,9 @@ export type CapabilityDefinitionView = {
   parameters: CapabilityParameter[];
 };
 
+/** 1x1 红色 PNG，68 字节：够小，又能真实通过图片头校验走完整条链路。 */
+const SAMPLE_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
 export const VISION_CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
   {
     definitionKey: "image.describe",
@@ -69,7 +80,12 @@ export const VISION_CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
     defaultDescription: "描述图片内容并回答关于图片的问题",
     executorType: "ollama_vision",
     toolName: "analyze_image",
-    inputSchema: IMAGE_INPUT_SCHEMA
+    inputSchema: IMAGE_INPUT_SCHEMA,
+    sampleInput: {
+      imageBase64: SAMPLE_PNG_BASE64,
+      mimeType: "image/png",
+      prompt: "这张图片是什么颜色？"
+    }
   }
 ];
 

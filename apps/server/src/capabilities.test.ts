@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { PRIMARY_CAPABILITY_DEFINITION_KEY, VISION_CAPABILITY_DEFINITIONS, viewCapabilityDefinition } from "./capabilities.js";
+import { validateImage } from "./ollama.js";
 
 test("built-in capabilities use unique, code-owned definition keys", () => {
   const keys = VISION_CAPABILITY_DEFINITIONS.map((definition) => definition.definitionKey);
@@ -30,6 +31,14 @@ test("every parameter carries the description the MCP client sees", () => {
 
   for (const parameter of view.parameters) {
     assert.ok(parameter.description.length > 0, `parameter ${parameter.name} needs a description`);
+  }
+});
+
+test("every capability ships a sample input its own contract accepts", () => {
+  for (const definition of VISION_CAPABILITY_DEFINITIONS) {
+    // 页面上的「测试」按钮直接拿这份样例去打真实链路，样例一旦和契约漂移，测试按钮就会先坏。
+    const parsed = definition.inputSchema.parse(definition.sampleInput) as { imageBase64: string; mimeType: string };
+    assert.doesNotThrow(() => validateImage(parsed as never, 10 * 1024 * 1024), `${definition.definitionKey} 的样例图片无法通过校验`);
   }
 });
 
