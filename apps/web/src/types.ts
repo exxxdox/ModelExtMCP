@@ -11,6 +11,10 @@ export type CapabilityDefinition = {
   definitionKey: string;
   executorType: "ollama_vision";
   toolName: string;
+  /** 代码基线，用来展示默认值并支持一键恢复。 */
+  defaultKey: string;
+  defaultName: string;
+  defaultDescription: string;
   parameters: CapabilityParameter[];
 };
 

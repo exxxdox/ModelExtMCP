@@ -182,6 +182,11 @@ code { color: #254d78; background: #edf3f9; border-radius: 3px; padding: 3px 6px
 .contract-facts dt { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
 .contract-facts dd { margin: 0; }
 .contract-note { margin: 0 0 14px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+/* 代码基线区：默认值只用于对照与恢复，从「不可编辑的调用说明」里再退一层。 */
+.contract-defaults { margin: 0 0 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 6px; }
+.contract-defaults-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.contract-defaults-head h4 { margin: 0; font-size: 13px; }
+.contract-defaults .contract-note { margin: 0; }
 .param-table { min-width: 0; border: 1px solid var(--line); border-radius: 6px; }
 .param-table th, .param-table td { padding: 9px 11px; font-size: 12px; }
 .param-table td:last-child, .param-table th:last-child { text-align: left; }

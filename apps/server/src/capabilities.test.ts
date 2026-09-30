@@ -33,6 +33,16 @@ test("every parameter carries the description the MCP client sees", () => {
   }
 });
 
+test("the read-only view carries the code defaults the admin console restores from", () => {
+  const definition = VISION_CAPABILITY_DEFINITIONS[0]!;
+  const view = viewCapabilityDefinition(definition);
+
+  assert.equal(view.defaultKey, definition.defaultKey);
+  assert.equal(view.defaultName, definition.defaultName);
+  assert.equal(view.defaultDescription, definition.defaultDescription);
+  assert.ok(view.defaultDescription.length > 0, "the agent needs a non-empty default description");
+});
+
 test("the view is JSON serializable so the admin API can return it directly", () => {
   const view = viewCapabilityDefinition(VISION_CAPABILITY_DEFINITIONS[0]!);
 

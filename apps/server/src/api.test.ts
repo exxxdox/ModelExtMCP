@@ -86,6 +86,17 @@ test("capability responses carry the code-owned tool contract for read-only disp
   });
 });
 
+test("capability responses expose the code defaults so the console can restore them", async () => {
+  await withAdminApi(async (api) => {
+    const response = await api.request("capabilities");
+    const [capability] = await response.json() as Array<{ definition: { defaultKey: string; defaultName: string; defaultDescription: string } }>;
+
+    assert.equal(capability?.definition.defaultKey, "image.describe");
+    assert.ok((capability?.definition.defaultName.length ?? 0) > 0);
+    assert.ok((capability?.definition.defaultDescription.length ?? 0) > 0);
+  });
+});
+
 test("editing a capability updates name, key and description while keeping the definition", async () => {
   await withAdminApi(async (api, database) => {
     const [capability] = database.listCapabilities();

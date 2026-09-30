@@ -14,10 +14,10 @@ export function CapabilitiesPage({ data, onOpenEditor }: CapabilitiesPageProps) 
       <PageHeader title="能力设置" description="定义 Agent 可调用的能力标识，并决定每个能力最终由哪些模型提供。" />
 
       <section className="config-section">
-        <SectionHeader title="能力" description="能力由服务端代码提供，数量固定；这里可以调整 Agent 看到的名称、标识与说明。" />
+        <SectionHeader title="能力" description="能力由服务端代码提供，数量固定；这里可以调整 Agent 看到的名称、标识与说明。说明会随 MCP 工具描述下发给 Agent，用来判断该不该调用这个能力。" />
         <div className="table-wrap">
           <table>
-            <thead><tr><th>名称</th><th>标识</th><th>说明</th><th>MCP 工具</th><th>状态</th><th /></tr></thead>
+            <thead><tr><th>名称</th><th>标识</th><th>Agent 可见说明</th><th>MCP 工具</th><th>状态</th><th /></tr></thead>
             <tbody>
               {data.capabilities.length === 0 && <EmptyRow columns={6} text="服务端未注册可用的能力" />}
               {data.capabilities.map((item) => (

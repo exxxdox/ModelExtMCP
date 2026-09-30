@@ -203,8 +203,8 @@ export class AppDatabase {
         randomUUID(),
         definition.definitionKey,
         definition.defaultKey,
-        definition.name,
-        definition.description,
+        definition.defaultName,
+        definition.defaultDescription,
         definition.executorType,
         now,
         now
@@ -403,8 +403,12 @@ export class AppDatabase {
     }));
   }
 
+  /**
+   * 默认能力是否已经有可用路由。用 getDefaultCapabilityKey() 而不是写死标识：
+   * 管理员改过默认能力的 key 之后，写死的字面量会让 /health/ready 永远报未就绪。
+   */
   hasReadyRoute(): boolean {
-    return this.resolveRoutes("image.describe").length > 0;
+    return this.resolveRoutes(this.getDefaultCapabilityKey()).length > 0;
   }
 
   private deleteById(table: "ollama_endpoints" | "model_deployments" | "capability_routes", id: string): void {

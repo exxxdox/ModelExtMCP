@@ -105,6 +105,8 @@ export function App() {
 
       {editor && (
         <Editor
+          // 按编辑目标重建编辑器：不受控输入不会自己刷新，否则上一个目标（尤其是点过恢复默认的）草稿会串到下一个。
+          key={`${editor.resource}-${editor.id ?? "new"}`}
           editor={editor}
           capabilities={data.capabilities}
           endpoints={data.endpoints}

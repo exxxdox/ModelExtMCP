@@ -9,11 +9,21 @@ import { z, type ZodType } from "zod";
  *
  * definition_key 是不可变的代码标识，用来在改名与升级后仍然找到同一行数据；
  * key 是给 Agent 看的标识，管理员可以改。
+ *
+ * description 不是管理端内部的备注，而是 Agent 判断该不该调用这个能力的唯一依据：
+ * 它会随 MCP 工具描述一起发给 Agent（见 mcp.ts）。因此注册表里的 default* 只是首次
+ * 写入数据库的基线，改坏了可以随时恢复。
  */
+
+/**
+ * capabilityKey 的说明基线。运行时会在这句后面接上当前默认能力标识（见 mcp.ts），
+ * 管理端只读参数表展示的也是这句，两边共用同一个常量才不会各说各话。
+ */
+export const CAPABILITY_KEY_PARAMETER_DESCRIPTION = "要调用的能力标识，省略时使用默认能力";
 
 /** MCP 工具 analyze_image 的入参契约，同时也是能力参数说明的唯一来源。 */
 export const IMAGE_INPUT_SCHEMA = z.object({
-  capabilityKey: z.string().min(1).optional().describe("要调用的能力标识，省略时使用服务端配置的默认能力"),
+  capabilityKey: z.string().min(1).optional().describe(CAPABILITY_KEY_PARAMETER_DESCRIPTION),
   imageBase64: z.string().min(1).describe("JPEG、PNG 或 WebP 图片的 Base64 内容，可包含 data URL 前缀"),
   mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]).describe("图片 MIME 类型"),
   prompt: z.string().max(4_000).optional().describe("希望模型回答的图片相关问题")
@@ -21,10 +31,11 @@ export const IMAGE_INPUT_SCHEMA = z.object({
 
 export type CapabilityDefinition = {
   definitionKey: string;
-  /** 首次写入数据库时使用的 Agent 可见标识，之后允许修改。 */
+  /** 以下是首次写入数据库的默认值，管理员改过之后仍可据此恢复。 */
   defaultKey: string;
-  name: string;
-  description: string;
+  defaultName: string;
+  /** Agent 判断该不该调用这个能力的说明，会随 MCP 工具描述下发。 */
+  defaultDescription: string;
   executorType: "ollama_vision";
   toolName: string;
   inputSchema: ZodType;
@@ -43,6 +54,10 @@ export type CapabilityDefinitionView = {
   definitionKey: string;
   executorType: "ollama_vision";
   toolName: string;
+  /** 代码基线：管理端用它展示默认值并提供恢复，与数据库中的当前值分开。 */
+  defaultKey: string;
+  defaultName: string;
+  defaultDescription: string;
   parameters: CapabilityParameter[];
 };
 
@@ -50,8 +65,8 @@ export const VISION_CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
   {
     definitionKey: "image.describe",
     defaultKey: "image.describe",
-    name: "图像理解",
-    description: "描述图片内容并回答关于图片的问题",
+    defaultName: "图像理解",
+    defaultDescription: "描述图片内容并回答关于图片的问题",
     executorType: "ollama_vision",
     toolName: "analyze_image",
     inputSchema: IMAGE_INPUT_SCHEMA
@@ -76,6 +91,9 @@ export function viewCapabilityDefinition(definition: CapabilityDefinition): Capa
     definitionKey: definition.definitionKey,
     executorType: definition.executorType,
     toolName: definition.toolName,
+    defaultKey: definition.defaultKey,
+    defaultName: definition.defaultName,
+    defaultDescription: definition.defaultDescription,
     parameters: Object.entries(schema.properties ?? {}).map(([name, property]) => ({
       name,
       type: describeParameterType(property),

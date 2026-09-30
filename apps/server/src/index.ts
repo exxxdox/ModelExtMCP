@@ -47,7 +47,8 @@ const mcpAccessGuard = createMcpAccessGuard({
   isNetworkAccessAllowed: () => database.isNetworkAccessAllowed()
 });
 
-const mcpNodeHandler = toNodeHandler(createVisionMcpHandler(service));
+// MCP 工具描述要读能力表（Agent 可见说明），所以处理器同时拿到 service 与 database。
+const mcpNodeHandler = toNodeHandler(createVisionMcpHandler(service, database));
 app.all("/mcp", bearerAuth(() => database.getCredential("mcp").token), mcpAccessGuard, (request, response) => {
   void mcpNodeHandler(request, response, request.body);
 });
