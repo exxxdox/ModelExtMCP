@@ -19,18 +19,17 @@ export function CapabilitiesPage({ data, onOpenEditor }: CapabilitiesPageProps) 
       <PageHeader title="能力设置" description="定义 Agent 可调用的能力标识，并决定每个能力最终由哪些模型提供。" />
 
       <section className="config-section">
-        <SectionHeader title="能力" description="能力由服务端代码提供，数量固定；这里可以调整 Agent 看到的名称、标识与说明。说明会随 MCP 工具描述下发给 Agent，用来判断该不该调用这个能力。" />
+        <SectionHeader title="能力" description="能力由服务端代码提供，数量固定；这里可以调整 Agent 看到的名称、标识与说明。一个能力就是一个 MCP 工具：标识即工具名，说明即工具描述的全部内容。" />
         <div className="table-wrap">
           <table>
-            <thead><tr><th>名称</th><th>标识</th><th>Agent 可见说明</th><th>MCP 工具</th><th>状态</th><th /></tr></thead>
+            <thead><tr><th>名称</th><th>工具名（能力标识）</th><th>Agent 可见说明</th><th>状态</th><th /></tr></thead>
             <tbody>
-              {data.capabilities.length === 0 && <EmptyRow columns={6} text="服务端未注册可用的能力" />}
+              {data.capabilities.length === 0 && <EmptyRow columns={5} text="服务端未注册可用的能力" />}
               {data.capabilities.map((item) => (
                 <tr key={item.id}>
                   <td className="strong">{item.name}</td>
                   <td><code>{item.key}</code></td>
                   <td>{item.description}</td>
-                  <td>{item.definition ? <code>{item.definition.toolName}</code> : "—"}</td>
                   <td><Status enabled={item.enabled} /></td>
                   <td><div className="row-actions"><button onClick={() => setTesting(item)}>测试</button><button onClick={() => onOpenEditor("capabilities", item.id)}>编辑</button></div></td>
                 </tr>

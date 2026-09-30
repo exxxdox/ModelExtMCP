@@ -26,7 +26,7 @@ export type CapabilityTestAttempt = {
 
 export type CapabilityTestOutcome = {
   ok: boolean;
-  /** 解析后真正用到的能力标识：调用方省略 capabilityKey 时，这里能看出落在了哪个能力上。 */
+  /** 这次测试实际调用的能力标识（也即 MCP 工具名）。 */
   capabilityKey: string;
   requestId: string;
   input: { mimeType: string; prompt: string; imageBytes: number };
@@ -73,24 +73,19 @@ export class VisionService {
   }
 
   /**
-   * Agent 可以省略能力标识；此时用服务端配置的默认能力，避免调用方硬编码一个
-   * 管理员随时可能改掉的字符串。
+   * 能力标识必传：MCP 工具名就是能力标识，处理器与管理端测试都知道自己调的是哪个能力。
+   * 不再有「省略就用默认能力」这条路径——它只会让「到底调了哪个能力」变得不确定。
    */
-  resolveCapabilityKey(capabilityKey: string | undefined): string {
-    return capabilityKey?.trim() || this.database.getDefaultCapabilityKey();
-  }
-
-  async analyze(capabilityKey: string | undefined, input: ImageInput, requestId: string): Promise<AnalysisResult> {
-    const resolvedKey = this.resolveCapabilityKey(capabilityKey);
+  async analyze(capabilityKey: string, input: ImageInput, requestId: string): Promise<AnalysisResult> {
     const imageBase64 = validateImage(input, this.database.getRuntimeSettings().maxImageBytes);
-    const routes = this.database.resolveRoutes(resolvedKey);
+    const routes = this.database.resolveRoutes(capabilityKey);
     if (routes.length === 0) throw new Error("NO_ACTIVE_ROUTE");
 
     return this.semaphore.run(async () => {
       const outcome = await this.dispatch(routes, imageBase64, input.prompt);
       // MCP 调用方只该看到失败原因，不该看到内部尝试过程。
       if (!outcome.ok) throw outcome.error;
-      return { text: outcome.text, capabilityKey: resolvedKey, requestId };
+      return { text: outcome.text, capabilityKey, requestId };
     });
   }
 
@@ -99,18 +94,17 @@ export class VisionService {
    * 区别只在于把过程原样带回来。它不抛错——诊断结果本身就是返回值，
    * 否则管理端只能看到一句失败信息，看不到是哪条路由、哪个模型、卡在哪一步。
    */
-  async testCapability(capabilityKey: string | undefined, input: ImageInput, requestId: string): Promise<CapabilityTestOutcome> {
+  async testCapability(capabilityKey: string, input: ImageInput, requestId: string): Promise<CapabilityTestOutcome> {
     const startedAt = Date.now();
-    const resolvedKey = this.resolveCapabilityKey(capabilityKey);
     // 图片字节数只有校验通过后才有意义；校验没通过时保持 0，不编造一个数字。
     const inputFacts = { mimeType: input.mimeType, prompt: input.prompt?.trim() ?? "", imageBytes: 0 };
     const finish = (rest: Omit<CapabilityTestOutcome, "capabilityKey" | "requestId" | "input" | "totalMs">): CapabilityTestOutcome =>
-      ({ capabilityKey: resolvedKey, requestId, input: inputFacts, totalMs: Date.now() - startedAt, ...rest });
+      ({ capabilityKey, requestId, input: inputFacts, totalMs: Date.now() - startedAt, ...rest });
 
     try {
       const imageBase64 = validateImage(input, this.database.getRuntimeSettings().maxImageBytes);
       inputFacts.imageBytes = Buffer.from(imageBase64, "base64").length;
-      const routes = this.database.resolveRoutes(resolvedKey);
+      const routes = this.database.resolveRoutes(capabilityKey);
       if (routes.length === 0) throw new Error("NO_ACTIVE_ROUTE");
 
       return await this.semaphore.run(async () => {

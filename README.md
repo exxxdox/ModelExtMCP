@@ -5,7 +5,7 @@ Model Relay 为不具备视觉能力的 Agent 提供 MCP 图像理解工具。�
 ## 当前能力
 
 - MCP Streamable HTTP 端点：`POST /mcp`
-- `analyze_image` 工具，接收 JPEG、PNG、WebP 的 Base64 内容
+- 一个能力对应一个 MCP 工具，接收 JPEG、PNG、WebP 的 Base64 内容
 - 多能力、多 Ollama 端点、多模型部署
 - 能力由服务端代码提供，数量固定：管理页只能修改 Agent 看到的名称、标识与说明，不能新增或删除
 - 同一能力支持按优先级配置多条回退路由
@@ -52,14 +52,13 @@ Model Relay 为不具备视觉能力的 Agent 提供 MCP 图像理解工具。�
 Authorization: Bearer <MCP_API_KEY>
 ```
 
-工具参数：
+工具名就是能力标识（管理页“能力设置”里可改），工具描述就是该能力的“Agent 可见说明”，一个能力一个工具。参数：
 
 | 参数 | 必填 | 说明 |
 | --- | --- | --- |
 | `imageBase64` | 是 | 图片纯 Base64，或带前缀的数据 URI |
 | `mimeType` | 是 | `image/jpeg`、`image/png`、`image/webp` |
 | `prompt` | 否 | 希望视觉模型回答的问题 |
-| `capabilityKey` | 否 | 省略时使用服务端配置的默认能力（管理页可改其标识） |
 
 调用者不能指定 Ollama URL 或模型名；实际目标完全由服务端路由决定。
 

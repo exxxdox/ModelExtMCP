@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import {
+  MCP_TOOL_NAME_PATTERN,
   PRIMARY_CAPABILITY_DEFINITION_KEY,
   VISION_CAPABILITY_DEFINITIONS
 } from "./capabilities.js";
@@ -160,6 +161,34 @@ export class AppDatabase {
     `);
     this.addMissingColumns();
     this.migrateCapabilityDefinitionKeys();
+    this.migrateCapabilityKeysToToolNames();
+  }
+
+  /**
+   * 能力标识就是 MCP 工具名，而工具名只接受 [a-z0-9_-]：旧库里的标识（如 image.describe）
+   * 会被客户端拒绝，必须在启动时改写成合法形式。
+   *
+   * 改写规则只动非法字符，管理员起的名字与含义都保留；撞名时补数字后缀，
+   * 免得 UNIQUE 约束让服务直接起不来。这里不碰 updated_at/version：迁移不是管理员的一次编辑，
+   * 不应当成乐观锁意义上的「配置已变更」。
+   */
+  private migrateCapabilityKeysToToolNames(): void {
+    const rows = this.db.prepare("SELECT id, key FROM capabilities").all() as DatabaseRow[];
+    const taken = new Set(rows.map((row) => String(row.key)));
+    for (const row of rows) {
+      const id = String(row.id);
+      const current = String(row.key);
+      if (MCP_TOOL_NAME_PATTERN.test(current)) continue;
+      taken.delete(current);
+
+      const sanitized = current.toLowerCase().replace(/[^a-z0-9_-]/g, "_").replace(/^[^a-z]+/, "");
+      const base = sanitized || "capability";
+      let candidate = base;
+      for (let suffix = 2; taken.has(candidate); suffix += 1) candidate = `${base}_${suffix}`;
+
+      taken.add(candidate);
+      this.db.prepare("UPDATE capabilities SET key = ? WHERE id = ?").run(candidate, id);
+    }
   }
 
   /**
@@ -289,7 +318,10 @@ export class AppDatabase {
     return this.getCapability(id);
   }
 
-  /** 能力集合由代码决定，不提供删除；这里只取默认能力供 MCP 解析省略的标识。 */
+  /**
+   * 主能力的当前标识（管理员可改），只服务健康检查：MCP 调用一定带工具名，
+   * 不再有需要服务端兜底解析的调用。
+   */
   getDefaultCapabilityKey(): string {
     const row = this.db.prepare("SELECT key FROM capabilities WHERE definition_key = ?")
       .get(PRIMARY_CAPABILITY_DEFINITION_KEY) as DatabaseRow | undefined;

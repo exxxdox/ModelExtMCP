@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { PRIMARY_CAPABILITY_DEFINITION_KEY, VISION_CAPABILITY_DEFINITIONS, viewCapabilityDefinition } from "./capabilities.js";
+import { MCP_TOOL_NAME_PATTERN, PRIMARY_CAPABILITY_DEFINITION_KEY, VISION_CAPABILITY_DEFINITIONS, viewCapabilityDefinition } from "./capabilities.js";
 import { validateImage } from "./ollama.js";
 
 test("built-in capabilities use unique, code-owned definition keys", () => {
@@ -10,12 +10,19 @@ test("built-in capabilities use unique, code-owned definition keys", () => {
   assert.ok(keys.includes(PRIMARY_CAPABILITY_DEFINITION_KEY));
 });
 
+test("every capability default key is a legal MCP tool name", () => {
+  for (const definition of VISION_CAPABILITY_DEFINITIONS) {
+    // 能力标识就是 MCP 工具名，客户端把工具名原样交给模型，带点号等字符会让调用直接失败。
+    assert.match(definition.defaultKey, MCP_TOOL_NAME_PATTERN, `${definition.definitionKey} 的默认标识不是合法工具名`);
+  }
+});
+
 test("the image capability exposes its MCP tool contract as read-only parameters", () => {
   const view = viewCapabilityDefinition(VISION_CAPABILITY_DEFINITIONS[0]!);
 
-  assert.equal(view.toolName, "analyze_image");
   assert.equal(view.executorType, "ollama_vision");
-  assert.deepEqual(view.parameters.map((parameter) => parameter.name), ["capabilityKey", "imageBase64", "mimeType", "prompt"]);
+  // 能力与工具一一对应，能力选择由工具名完成，因此参数里不再有 capabilityKey。
+  assert.deepEqual(view.parameters.map((parameter) => parameter.name), ["imageBase64", "mimeType", "prompt"]);
   assert.equal(view.parameters.find((parameter) => parameter.name === "imageBase64")?.required, true);
   assert.equal(view.parameters.find((parameter) => parameter.name === "prompt")?.required, false);
 });

@@ -1,60 +1,36 @@
 import { randomUUID } from "node:crypto";
 import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
-import { CAPABILITY_KEY_PARAMETER_DESCRIPTION, IMAGE_INPUT_SCHEMA } from "./capabilities.js";
+import { IMAGE_INPUT_SCHEMA } from "./capabilities.js";
 import type { AppDatabase } from "./database.js";
 import type { Capability } from "./domain.js";
 import type { VisionService } from "./service.js";
 
-const TOOL_NAME = "analyze_image";
-const TOOL_TITLE = "Analyze image with a configured vision model";
-const TOOL_DESCRIPTION = "When the current model cannot see images, send an image to a configured Ollama vision model.";
-
-/** Agent 侧看到的动态说明：工具描述里的能力清单，以及省略 capabilityKey 时的默认值。 */
-export type AgentCapabilityView = {
-  toolDescription: string;
-  capabilityKeyDescription: string;
+/** Agent 侧看到的工具：能力与工具一一对应，标识即工具名，说明即工具描述的全部。 */
+export type AgentToolView = {
+  name: string;
+  title: string;
+  description: string;
 };
 
 /**
- * 能力说明是管理员自由文本（管理 API 只做长度校验），里面的换行会伪造出额外的清单条目，
- * 所以拼进工具描述前压平成单行。信任边界：能改这段文字的人已经持有管理员令牌，
- * 与改提示词模板是同一层权限，这里只做格式归一，不做内容审查。
+ * 把启用能力映射成 MCP 工具。
+ *
+ * 为什么一个能力一个工具，而不是「一个工具 + capabilityKey 参数」：能力之间的区别就是
+ * 「什么时候该用它」，而这是模型读工具描述做的选择。摊平成一个参数后，模型要先读描述
+ * 再猜参数，等于同一件事说两遍。新增能力就是新增一个工具。
+ *
+ * 为什么工具描述就是能力说明本身，不再拼接前缀或能力清单：这段文字是管理员写给 Agent 的
+ * 唯一依据，只要还能被拼上别的内容，「管理端写的」与「Agent 读到的」就还有分叉的余地。
+ * 停用的能力不下发，等于从工具列表里消失，而不是留一个调用必然失败的条目。
  */
-function toSingleLine(text: string): string {
-  return text.replace(/\s+/g, " ").trim();
-}
-
-/**
- * 把启用能力拼成 Agent 可读的说明。
- *
- * 为什么用能力的 description 而不另起字段：description 本身就是「这个能力是干什么的」，
- * 它既是管理端编辑的对象，也必须是 Agent 判断该不该调用这个能力的唯一依据，同一份文本
- * 才不会出现「管理端写的」和「Agent 读到的」不一致。
- *
- * 能力清单放在工具描述里而不放参数说明里：Agent 先读工具描述决定要不要调用这个工具，
- * 同一份清单一处出现即可。
- *
- * 为什么判据是 enabled 而不是「有没有可用路由」：路由、部署、端点是否健康是随时变化的
- * 运行状态，Ollama 掉线也会让路由暂时解析不出来。把它写进能力语义，会让 Agent 以为这个
- * 能力不存在；而实际状态已经由 /health/ready 暴露给管理员，失败也会以 NO_ACTIVE_ROUTE
- * 返回给调用方。
- */
-export function describeCapabilitiesForAgent(
-  capabilities: readonly Capability[],
-  defaultCapabilityKey: string
-): AgentCapabilityView {
-  const enabled = capabilities.filter((capability) => capability.enabled);
-  const defaultIsUsable = enabled.some((capability) => capability.key === defaultCapabilityKey);
-
-  return {
-    toolDescription: enabled.length === 0
-      ? `${TOOL_DESCRIPTION}\n当前没有启用的能力。`
-      : [TOOL_DESCRIPTION, "可用能力：", ...enabled.map((capability) => `- ${capability.key}：${toSingleLine(capability.description)}`)].join("\n"),
-    // 默认能力被停用时不能再说「省略即可」，否则 Agent 会照着一个失效的默认值调用并拿到 NO_ACTIVE_ROUTE。
-    capabilityKeyDescription: defaultIsUsable
-      ? `${CAPABILITY_KEY_PARAMETER_DESCRIPTION} ${defaultCapabilityKey}`
-      : "要调用的能力标识，当前默认能力不可用，必须显式指定"
-  };
+export function describeCapabilityTools(capabilities: readonly Capability[]): AgentToolView[] {
+  return capabilities
+    .filter((capability) => capability.enabled)
+    .map((capability) => ({
+      name: capability.key,
+      title: capability.name,
+      description: capability.description
+    }));
 }
 
 export function createVisionMcpHandler(service: VisionService, database: AppDatabase) {
@@ -62,34 +38,33 @@ export function createVisionMcpHandler(service: VisionService, database: AppData
     () => {
       const server = new McpServer({ name: "model-ext-mcp", version: "0.1.0" });
       // factory 每个 HTTP 请求都会重建 server，所以这里读到的是最新配置：
-      // 管理员改完 Agent 可见说明，下一次 tools/list 就生效，无需重启服务。
-      const capabilities = describeCapabilitiesForAgent(database.listCapabilities(), database.getDefaultCapabilityKey());
-
-      server.registerTool(
-        TOOL_NAME,
-        {
-          title: TOOL_TITLE,
-          description: capabilities.toolDescription,
-          inputSchema: IMAGE_INPUT_SCHEMA.extend({
-            capabilityKey: IMAGE_INPUT_SCHEMA.shape.capabilityKey.describe(capabilities.capabilityKeyDescription)
-          })
-        },
-        async (input) => {
-          try {
-            const result = await service.analyze(input.capabilityKey, input, randomUUID());
-            return {
-              content: [{ type: "text" as const, text: result.text }],
-              structuredContent: result
-            };
-          } catch (error) {
-            const code = error instanceof Error ? error.message : "VISION_ANALYSIS_FAILED";
-            return {
-              isError: true,
-              content: [{ type: "text" as const, text: `图像分析失败：${code}` }]
-            };
+      // 管理员改完工具名、名称或说明，下一次 tools/list 就生效，无需重启服务。
+      for (const tool of describeCapabilityTools(database.listCapabilities())) {
+        server.registerTool(
+          tool.name,
+          {
+            title: tool.title,
+            description: tool.description,
+            inputSchema: IMAGE_INPUT_SCHEMA
+          },
+          async (input) => {
+            try {
+              // 工具名即能力标识：调用方没有可选的能力参数，服务端按工具名解析路由。
+              const result = await service.analyze(tool.name, input, randomUUID());
+              return {
+                content: [{ type: "text" as const, text: result.text }],
+                structuredContent: result
+              };
+            } catch (error) {
+              const code = error instanceof Error ? error.message : "VISION_ANALYSIS_FAILED";
+              return {
+                isError: true,
+                content: [{ type: "text" as const, text: `图像分析失败：${code}` }]
+              };
+            }
           }
-        }
-      );
+        );
+      }
       return server;
     },
     { responseMode: "json" }

@@ -41,7 +41,6 @@ function CapabilityContract({ capability, onRestoreDefaults, isCustomized }: Cap
       <h3>不可编辑的调用说明</h3>
       <dl className="contract-facts">
         <div><dt>执行器</dt><dd><code>{definition.executorType}</code></dd></div>
-        <div><dt>MCP 工具</dt><dd><code>{definition.toolName}</code></dd></div>
         <div><dt>代码定义标识</dt><dd><code>{definition.definitionKey}</code></dd></div>
       </dl>
       <p className="contract-note">能力由服务端代码实现，参数与执行方式固定，只能在上面修改 Agent 看到的名称、标识与说明。</p>
@@ -154,10 +153,10 @@ export function Editor({ editor, capabilities, endpoints, deployments, routes, a
         <form onSubmit={(event) => void submit(event)}>
           {editor.resource === "capabilities" && <Fragment key={draftRevision}>
             <Field name="name" label="名称" defaultValue={capabilityDraft?.name ?? String(existing?.name ?? "")} required />
-            <Field name="key" label="能力标识" defaultValue={capabilityDraft?.key ?? String(existing?.key ?? "")} placeholder="image.describe" required />
-            <p className="field-hint">标识是 Agent 调用时传的 capabilityKey；改动后仍按旧标识调用的 Agent 会失败，改用默认能力的调用不受影响。</p>
+            <Field name="key" label="工具名（能力标识）" defaultValue={capabilityDraft?.key ?? String(existing?.key ?? "")} placeholder="image_describe" required />
+            <p className="field-hint">一个能力就是一个 MCP 工具，这个名字就是工具名，Agent 按名字调用；改名后仍按旧名字调用的 Agent 会失败。只能用英文小写字母、数字、下划线和短横线。</p>
             <Field name="description" label="Agent 可见说明" defaultValue={capabilityDraft?.description ?? String(existing?.description ?? "")} multiline required />
-            <p className="field-hint">这段文字会随 MCP 工具描述一起发给 Agent，Agent 靠它判断该不该调用这个能力，请写清「什么时候用它」。</p>
+            <p className="field-hint">这段文字就是 MCP 工具描述的全部内容，Agent 只靠它判断什么时候该调用这个工具，请写清「什么时候用它」。</p>
             <CapabilityContract capability={capability} onRestoreDefaults={capabilityDefinition ? restoreCapabilityDefaults : undefined} isCustomized={isCustomized} />
           </Fragment>}
           {editor.resource === "endpoints" && <>

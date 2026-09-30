@@ -1,14 +1,15 @@
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response, Router } from "express";
 import { z } from "zod";
-import { findCapabilityDefinition, viewCapabilityDefinition, type CapabilityDefinitionView } from "./capabilities.js";
+import { findCapabilityDefinition, MCP_TOOL_NAME_PATTERN, viewCapabilityDefinition, type CapabilityDefinitionView } from "./capabilities.js";
 import type { AppDatabase, CredentialKind } from "./database.js";
 import type { Capability } from "./domain.js";
 import { testOllamaEndpoint, type ImageInput } from "./ollama.js";
 import type { VisionService } from "./service.js";
 
 const capabilitySchema = z.object({
-  key: z.string().trim().min(2).max(80).regex(/^[a-z][a-z0-9._-]+$/),
+  // 标识就是 MCP 工具名，所以直接复用工具名规则：不合法的话 Agent 侧根本调不动。
+  key: z.string().trim().regex(MCP_TOOL_NAME_PATTERN, "标识即 MCP 工具名，只能用小写字母开头，后接小写字母、数字、下划线或短横线，长度 2-64"),
   name: z.string().trim().min(1).max(80),
   description: z.string().trim().min(1).max(500),
   enabled: z.boolean().default(true),

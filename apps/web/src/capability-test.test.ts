@@ -6,7 +6,7 @@ import type { CapabilityTestOutcome } from "./types.js";
 function outcome(overrides: Partial<CapabilityTestOutcome>): CapabilityTestOutcome {
   return {
     ok: true,
-    capabilityKey: "image.describe",
+    capabilityKey: "image_describe",
     requestId: "request-id",
     input: { mimeType: "image/png", prompt: "什么颜色？", imageBytes: 68 },
     attempts: [],

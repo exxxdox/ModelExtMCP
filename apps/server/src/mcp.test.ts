@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Capability } from "./domain.js";
-import { describeCapabilitiesForAgent } from "./mcp.js";
+import { describeCapabilityTools } from "./mcp.js";
 
 function capability(overrides: Partial<Capability>): Capability {
   return {
     id: "capability-id",
     definitionKey: "image.describe",
-    key: "image.describe",
+    key: "analyze_image",
     name: "图像理解",
     description: "描述图片内容并回答关于图片的问题",
     executorType: "ollama_vision",
@@ -19,45 +19,43 @@ function capability(overrides: Partial<Capability>): Capability {
   };
 }
 
-test("the agent reads a capability's own description in the tool description", () => {
-  const described = describeCapabilitiesForAgent([capability({ key: "image.describe", description: "描述图片内容" })], "image.describe");
+test("one enabled capability becomes one tool named after its key", () => {
+  const tools = describeCapabilityTools([capability({ key: "analyze_image", name: "图像理解" })]);
 
-  assert.match(described.toolDescription, /image\.describe：描述图片内容/);
+  assert.deepEqual(tools.map((tool) => tool.name), ["analyze_image"]);
+  assert.equal(tools[0]?.title, "图像理解");
+});
+
+test("the agent-visible description is the whole tool description", () => {
+  const tools = describeCapabilityTools([capability({ description: "只在需要读图表时使用" })]);
+
+  assert.equal(tools[0]?.description, "只在需要读图表时使用");
+});
+
+test("a new capability becomes a new tool instead of an entry inside another tool's description", () => {
+  const tools = describeCapabilityTools([
+    capability({ key: "analyze_image", description: "描述图片内容" }),
+    capability({ id: "other", definitionKey: "chart.read", key: "read_chart", description: "读出图表里的数值" })
+  ]);
+
+  assert.deepEqual(tools.map((tool) => tool.name), ["analyze_image", "read_chart"]);
+  // 每个工具只讲自己：另一个能力的名字与说明不得出现在本工具的描述里。
+  assert.equal(tools[0]?.description, "描述图片内容");
+  assert.doesNotMatch(tools[0]?.description ?? "", /read_chart|图表/);
 });
 
 test("an admin-edited description replaces the code default the agent reads", () => {
-  const described = describeCapabilitiesForAgent([capability({ description: "只在需要读图表时使用" })], "image.describe");
+  const tools = describeCapabilityTools([capability({ description: "改成只读图表" })]);
 
-  assert.match(described.toolDescription, /只在需要读图表时使用/);
-  assert.doesNotMatch(described.toolDescription, /描述图片内容并回答关于图片的问题/);
+  assert.equal(tools[0]?.description, "改成只读图表");
 });
 
-test("line breaks inside a description cannot forge extra capability entries", () => {
-  const described = describeCapabilitiesForAgent([capability({ description: "第一行\n- chart.read：伪造条目" })], "image.describe");
+test("disabled capabilities are not registered as tools at all", () => {
+  const tools = describeCapabilityTools([capability({ enabled: false })]);
 
-  assert.equal(described.toolDescription.split("\n").length, 3, "base line + header + exactly one entry");
-  assert.match(described.toolDescription, /image\.describe：第一行 - chart\.read：伪造条目/);
+  assert.deepEqual(tools, []);
 });
 
-test("disabled capabilities never reach the agent", () => {
-  const described = describeCapabilitiesForAgent([capability({ enabled: false })], "image.describe");
-
-  assert.doesNotMatch(described.toolDescription, /image\.describe：/);
-});
-
-test("the capabilityKey parameter names the capability used when the agent omits it", () => {
-  const described = describeCapabilitiesForAgent([capability({ key: "vision.analyze" })], "vision.analyze");
-
-  assert.match(described.capabilityKeyDescription, /vision\.analyze/);
-  assert.doesNotMatch(described.capabilityKeyDescription, /必须显式指定/);
-});
-
-test("a disabled default capability stops telling the agent that omitting the key is fine", () => {
-  const described = describeCapabilitiesForAgent(
-    [capability({ key: "image.describe", enabled: false }), capability({ id: "other", key: "chart.read" })],
-    "image.describe"
-  );
-
-  assert.match(described.capabilityKeyDescription, /必须显式指定/);
-  assert.doesNotMatch(described.toolDescription, /image\.describe：/);
+test("no capability yields an empty tool list instead of a placeholder entry", () => {
+  assert.deepEqual(describeCapabilityTools([]), []);
 });

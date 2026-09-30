@@ -6,51 +6,6 @@ import { test } from "node:test";
 import { AppDatabase } from "./database.js";
 import { VisionService } from "./service.js";
 
-function withDatabase(run: (database: AppDatabase) => void): void {
-  const directory = mkdtempSync(path.join(tmpdir(), "model-ext-mcp-service-"));
-  const database = new AppDatabase(directory);
-  try {
-    run(database);
-  } finally {
-    database.close();
-    rmSync(directory, { recursive: true, force: true });
-  }
-}
-
-test("an omitted capability key falls back to the configured default capability", () => {
-  withDatabase((database) => {
-    const service = new VisionService(database);
-
-    assert.equal(service.resolveCapabilityKey(undefined), database.getDefaultCapabilityKey());
-  });
-});
-
-test("the fallback follows a renamed capability so agents without a key keep working", () => {
-  withDatabase((database) => {
-    const [capability] = database.listCapabilities();
-    assert.ok(capability);
-    database.updateCapability(capability.id, {
-      key: "vision.analyze",
-      name: capability.name,
-      description: capability.description,
-      enabled: true,
-      version: capability.version
-    });
-
-    const service = new VisionService(database);
-
-    assert.equal(service.resolveCapabilityKey(undefined), "vision.analyze");
-  });
-});
-
-test("an explicit capability key is used as-is", () => {
-  withDatabase((database) => {
-    const service = new VisionService(database);
-
-    assert.equal(service.resolveCapabilityKey("image.describe"), "image.describe");
-  });
-});
-
 /** 1x1 红色 PNG：与页面测试按钮用的样例同款，足够通过图片校验又不会拖慢用例。 */
 const SAMPLE_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
@@ -102,7 +57,7 @@ test("testing a capability reports the model that answered and the request it ac
 
     assert.equal(outcome.ok, true);
     assert.equal(outcome.text, "这张图片是纯红色。");
-    assert.equal(outcome.capabilityKey, "image.describe");
+    assert.equal(outcome.capabilityKey, "image_describe");
     assert.equal(outcome.input.prompt, "什么颜色？");
     assert.equal(outcome.input.mimeType, "image/png");
     assert.deepEqual(outcome.attempts.map((attempt) => [attempt.modelName, attempt.status, attempt.responseText]), [
@@ -141,7 +96,7 @@ test("testing without a usable route explains the gap instead of throwing at the
   await withDatabaseAsync(async (database) => {
     const service = new VisionService(database);
 
-    const outcome = await service.testCapability("image.describe", { imageBase64: SAMPLE_PNG, mimeType: "image/png" }, "req-3");
+    const outcome = await service.testCapability("image_describe", { imageBase64: SAMPLE_PNG, mimeType: "image/png" }, "req-3");
 
     assert.equal(outcome.ok, false);
     assert.equal(outcome.errorCode, "NO_ACTIVE_ROUTE");

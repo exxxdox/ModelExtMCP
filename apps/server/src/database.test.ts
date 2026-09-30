@@ -41,7 +41,7 @@ test("database resolves a complete capability route and protects referenced reco
       enabled: true
     });
 
-    const [resolved] = database.resolveRoutes("image.describe");
+    const [resolved] = database.resolveRoutes("image_describe");
     assert.equal(resolved?.modelName, "vision:test");
     assert.equal(resolved?.baseUrl, "http://ollama:11434");
     assert.throws(() => database.deleteEndpoint(endpoint.id), /constraint failed/i);
@@ -58,7 +58,7 @@ test("renaming a capability key does not create a duplicate capability on restar
   const [capability] = first.listCapabilities();
   assert.ok(capability);
   first.updateCapability(capability.id, {
-    key: "vision.analyze",
+    key: "vision_analyze",
     name: "视觉理解",
     description: "自定义描述",
     enabled: true,
@@ -71,9 +71,9 @@ test("renaming a capability key does not create a duplicate capability on restar
   try {
     const capabilities = second.listCapabilities();
     assert.equal(capabilities.length, 1);
-    assert.equal(capabilities[0]?.key, "vision.analyze");
+    assert.equal(capabilities[0]?.key, "vision_analyze");
     assert.equal(capabilities[0]?.name, "视觉理解");
-    assert.equal(second.getDefaultCapabilityKey(), "vision.analyze");
+    assert.equal(second.getDefaultCapabilityKey(), "vision_analyze");
   } finally {
     second.close();
     rmSync(directory, { recursive: true, force: true });
@@ -106,9 +106,44 @@ test("legacy capability rows adopt the code definition key without duplicating",
     const capabilities = database.listCapabilities();
     assert.equal(capabilities.length, 1);
     assert.equal(capabilities[0]?.definitionKey, "image.describe");
-    // 管理员改过的标识与名称必须保留，回填的只是代码侧标识。
-    assert.equal(capabilities[0]?.key, "vision.old");
+    // 管理员改过的名称必须保留；标识带点号时只把非法字符换成下划线，因为标识就是 MCP 工具名。
+    assert.equal(capabilities[0]?.key, "vision_old");
     assert.equal(capabilities[0]?.name, "旧名称");
+  } finally {
+    database.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("a legacy dotted capability key becomes the tool name the agent will see", () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "model-ext-mcp-dotted-key-"));
+  const legacy = new DatabaseSync(path.join(directory, "model-ext-mcp.sqlite"));
+  legacy.exec(`
+    CREATE TABLE capabilities (
+      id TEXT PRIMARY KEY,
+      definition_key TEXT NOT NULL DEFAULT 'image.describe',
+      key TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL,
+      executor_type TEXT NOT NULL CHECK (executor_type = 'ollama_vision'),
+      enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+      version INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
+  const now = new Date().toISOString();
+  // 旧版本代码把工具名写成 analyze_image、能力标识写成 image.describe，升级后两者合一。
+  legacy.prepare("INSERT INTO capabilities VALUES ('legacy-1', 'image.describe', 'image.describe', '图像理解', '描述图片', 'ollama_vision', 1, 1, ?, ?)")
+    .run(now, now);
+  legacy.close();
+
+  const database = new AppDatabase(directory);
+  try {
+    const [capability] = database.listCapabilities();
+    assert.equal(capability?.key, "image_describe");
+    assert.equal(capability?.name, "图像理解");
+    assert.equal(capability?.description, "描述图片");
   } finally {
     database.close();
     rmSync(directory, { recursive: true, force: true });

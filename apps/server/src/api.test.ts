@@ -79,11 +79,10 @@ test("capabilities are read-only in count: the API exposes no create or delete r
 test("capability responses carry the code-owned tool contract for read-only display", async () => {
   await withAdminApi(async (api) => {
     const response = await api.request("capabilities");
-    const [capability] = await response.json() as Array<{ definition: { toolName: string; parameters: Array<{ name: string }> } }>;
+    const [capability] = await response.json() as Array<{ definition: { parameters: Array<{ name: string }> } }>;
 
     assert.equal(response.status, 200);
-    assert.equal(capability?.definition.toolName, "analyze_image");
-    assert.ok((capability?.definition.parameters.length ?? 0) >= 4);
+    assert.deepEqual(capability?.definition.parameters.map((parameter) => parameter.name), ["imageBase64", "mimeType", "prompt"]);
   });
 });
 
@@ -92,7 +91,7 @@ test("capability responses expose the code defaults so the console can restore t
     const response = await api.request("capabilities");
     const [capability] = await response.json() as Array<{ definition: { defaultKey: string; defaultName: string; defaultDescription: string } }>;
 
-    assert.equal(capability?.definition.defaultKey, "image.describe");
+    assert.equal(capability?.definition.defaultKey, "image_describe");
     assert.ok((capability?.definition.defaultName.length ?? 0) > 0);
     assert.ok((capability?.definition.defaultDescription.length ?? 0) > 0);
   });
@@ -110,7 +109,7 @@ test("testing a capability runs the real path and reports why it could not finis
     assert.equal(response.status, 200);
     assert.equal(body.ok, false);
     assert.equal(body.errorCode, "NO_ACTIVE_ROUTE");
-    assert.equal(body.capabilityKey, "image.describe");
+    assert.equal(body.capabilityKey, "image_describe");
     assert.ok(body.input.imageBytes > 0, "样例图片必须随诊断一起回给管理端");
   });
 });
@@ -129,14 +128,30 @@ test("editing a capability updates name, key and description while keeping the d
 
     const response = await api.request(`capabilities/${capability.id}`, {
       method: "PUT",
-      body: JSON.stringify({ key: "vision.analyze", name: "视觉理解", description: "改为自定义描述", enabled: true, version: capability.version })
+      body: JSON.stringify({ key: "vision_analyze", name: "视觉理解", description: "改为自定义描述", enabled: true, version: capability.version })
     });
-    const body = await response.json() as { key: string; name: string; version: number; definition: { toolName: string } };
+    const body = await response.json() as { key: string; name: string; version: number; definition: { definitionKey: string } };
 
     assert.equal(response.status, 200);
-    assert.equal(body.key, "vision.analyze");
+    assert.equal(body.key, "vision_analyze");
     assert.equal(body.name, "视觉理解");
     assert.equal(body.version, capability.version + 1);
-    assert.equal(body.definition.toolName, "analyze_image");
+    assert.equal(body.definition.definitionKey, "image.describe");
+  });
+});
+
+test("a capability key that is not a legal MCP tool name is rejected", async () => {
+  await withAdminApi(async (api, database) => {
+    const [capability] = database.listCapabilities();
+    assert.ok(capability);
+
+    // 标识就是 MCP 工具名：带点号的标识会让客户端拿工具名去调模型时直接失败，必须挡在保存前。
+    const response = await api.request(`capabilities/${capability.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ key: "vision.analyze", name: "视觉理解", description: "描述", enabled: true, version: capability.version })
+    });
+
+    assert.equal(response.status, 400);
+    assert.equal(database.listCapabilities()[0]?.key, "image_describe");
   });
 });
