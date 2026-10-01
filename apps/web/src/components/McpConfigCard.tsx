@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
 import { buildMcpConfigText, mcpServerUrl } from "../mcp-config";
 import type { Credential } from "../types";
+import type { Notify } from "./Notifications";
 
 export type McpConfigCardProps = {
   credential: Credential | undefined;
-  onCopied: (message: string) => void;
+  onCopied: Notify;
   onGoToSettings: () => void;
 };
 
@@ -27,7 +28,7 @@ export function McpConfigCard({ credential, onCopied, onGoToSettings }: McpConfi
       await navigator.clipboard.writeText(buildMcpConfigText({ origin, apiKey: credential.token }));
       onCopied("MCP 配置已复制，可直接粘贴到客户端配置文件中");
     } catch {
-      onCopied("浏览器未允许复制，请展开密钥后手动复制");
+      onCopied("浏览器未允许复制，请展开密钥后手动复制", "error");
     }
   }
 
@@ -39,7 +40,7 @@ export function McpConfigCard({ credential, onCopied, onGoToSettings }: McpConfi
           <p>把这份配置粘贴到支持 HTTP 传输的 MCP 客户端，例如 Claude Code 的 <code>.mcp.json</code>。</p>
         </div>
         {credential
-          ? <div className="section-actions"><button className="secondary" onClick={() => setRevealed((current) => !current)}>{revealed ? "隐藏密钥" : "显示密钥"}</button><button onClick={() => void copy()}>一键复制</button></div>
+          ? <div className="section-actions"><button onClick={() => void copy()}>一键复制</button></div>
           : <div className="section-actions"><button className="secondary" onClick={onGoToSettings}>去设置查看凭据</button></div>}
       </div>
 
@@ -49,7 +50,12 @@ export function McpConfigCard({ credential, onCopied, onGoToSettings }: McpConfi
           <code>{mcpServerUrl(origin)}</code>
         </div>
         {credential
-          ? <pre className="mcp-code"><code>{visible}</code></pre>
+          // 原生折叠控件支持键盘与屏幕阅读器，收起时隐藏密钥，避免下次展开意外露出。
+          ? <details className="mcp-json" onToggle={(event) => { if (!event.currentTarget.open) setRevealed(false); }}>
+              <summary>MCP JSON 配置<span className="mcp-expand">展开</span><span className="mcp-collapse">收起</span></summary>
+              <div className="mcp-json-actions"><button className="secondary" onClick={() => setRevealed((current) => !current)}>{revealed ? "隐藏密钥" : "显示密钥"}</button></div>
+              <pre className="mcp-code"><code>{visible}</code></pre>
+            </details>
           : <p className="empty">尚未读取到 MCP API Key，请在“设置”中查看访问凭据。</p>}
         {credential && <p className="mcp-hint">复制的内容包含完整密钥；粘贴到客户端后请按 MCP API Key 的保密要求管理该文件。</p>}
       </div>

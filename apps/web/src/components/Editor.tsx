@@ -2,6 +2,7 @@ import { Fragment, useState, type FormEvent } from "react";
 import { defaultCapabilityDraft, isUsingCodeDefaults, type CapabilityDraft } from "../capability-defaults";
 import type { AdminApi, Capability, Deployment, EditorState, Endpoint, ResourceName, Route } from "../types";
 import { Check, Field, SelectField } from "./ui";
+import { useNotify } from "./Notifications";
 
 const DEFAULT_PROMPT = "请准确描述图片内容，并回答调用者关于图片的问题。";
 
@@ -79,6 +80,7 @@ function CapabilityContract({ capability, onRestoreDefaults, isCustomized }: Cap
 
 /** 新增/编辑四类资源的共用一个弹窗；字段差异由 resource 决定。 */
 export function Editor({ editor, capabilities, endpoints, deployments, routes, api, onClose, onSaved }: EditorProps) {
+  const notify = useNotify();
   const existing = [...capabilities, ...endpoints, ...deployments, ...routes].find((item) => item.id === editor.id) as Record<string, unknown> | undefined;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -96,6 +98,7 @@ export function Editor({ editor, capabilities, endpoints, deployments, routes, a
     if (!capabilityDefinition) return;
     setCapabilityDraft(defaultCapabilityDraft(capabilityDefinition));
     setDraftRevision((revision) => revision + 1);
+    notify("已恢复默认值，保存配置后生效", "info");
   }
 
   function buildBody(data: FormData): Record<string, unknown> {
@@ -139,6 +142,8 @@ export function Editor({ editor, capabilities, endpoints, deployments, routes, a
       await onSaved();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "保存失败");
+      // 错误保留在表单，浮层消失后仍能对照修改输入。
+      notify(caught instanceof Error ? caught.message : "保存失败", "error");
       setSaving(false);
     }
   }

@@ -15,7 +15,7 @@ export function DashboardPage({ data, onNavigate }: DashboardPageProps) {
       <PageHeader
         title="控制台"
         description="请求从能力出发，沿路由进入指定的 Ollama 模型；优先级越小越先尝试。"
-        actions={<button className="secondary" onClick={() => void data.refresh()} disabled={data.loading}>{data.loading ? "刷新中…" : "刷新状态"}</button>}
+        actions={<button className="secondary" onClick={() => void data.refresh(true)} disabled={data.loading}>{data.loading ? "刷新中…" : "刷新状态"}</button>}
       />
 
       <div className="stat-grid">
@@ -43,7 +43,7 @@ export function DashboardPage({ data, onNavigate }: DashboardPageProps) {
 
       <McpConfigCard
         credential={data.mcpCredential}
-        onCopied={(text) => data.setMessage(text)}
+        onCopied={data.setMessage}
         onGoToSettings={() => onNavigate("settings")}
       />
     </>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createAdminApi } from "../api-client";
+import { useNotify, type Notify } from "../components/Notifications";
 import type {
   AdminApi,
   Capability,
@@ -31,7 +32,6 @@ export type AdminData = {
   refreshingModels: boolean;
   revealedCredentials: Set<Credential["kind"]>;
   loading: boolean;
-  message: string | null;
   endpointMap: Map<string, Endpoint>;
   deploymentMap: Map<string, Deployment>;
   capabilityMap: Map<string, Capability>;
@@ -41,7 +41,7 @@ export type AdminData = {
   enabledDeploymentCount: number;
   mcpCredential: Credential | undefined;
   api: AdminApi;
-  refresh: () => Promise<void>;
+  refresh: (announce?: boolean) => Promise<void>;
   remove: (resource: ResourceName, id: string) => Promise<void>;
   rotateCredential: (kind: Credential["kind"]) => Promise<void>;
   copyCredential: (credential: Credential) => Promise<void>;
@@ -50,7 +50,7 @@ export type AdminData = {
   refreshModelList: () => Promise<void>;
   addDiscoveredModel: (model: DiscoveredModel) => Promise<void>;
   setRuntimeSettings: (settings: RuntimeSettings) => void;
-  setMessage: (message: string | null) => void;
+  setMessage: Notify;
 };
 
 export function useAdminData(token: string, onUnauthorized: () => void, onAdminTokenRotated: (token: string) => void): AdminData {
@@ -65,11 +65,11 @@ export function useAdminData(token: string, onUnauthorized: () => void, onAdminT
   const [refreshingModels, setRefreshingModels] = useState(false);
   const [revealedCredentials, setRevealedCredentials] = useState<Set<Credential["kind"]>>(() => new Set());
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const setMessage = useNotify();
 
   const api = useMemo(() => createAdminApi({ token, onUnauthorized }), [token, onUnauthorized]);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (announce = false) => {
     if (!token) return;
     setLoading(true);
     try {
@@ -87,13 +87,14 @@ export function useAdminData(token: string, onUnauthorized: () => void, onAdminT
       setRoutes(nextRoutes);
       setCredentials(nextCredentials);
       setRuntimeSettings(nextRuntimeSettings);
-      setMessage(null);
+      // 刷新不清理独立反馈，避免保存和添加成功提示刚出现就消失。
+      if (announce) setMessage("状态已刷新");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "加载失败");
+      setMessage(error instanceof Error ? error.message : "加载失败", "error");
     } finally {
       setLoading(false);
     }
-  }, [api, token]);
+  }, [api, token, setMessage]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
@@ -105,13 +106,12 @@ export function useAdminData(token: string, onUnauthorized: () => void, onAdminT
     if (!window.confirm("确定删除这条配置？被其他配置引用时不会删除。")) return;
     try {
       await api(`${resource}/${id}`, { method: "DELETE" });
-      // 先刷新再提示：refresh 成功时会清空消息，先设置提示会被立刻覆盖掉。
-      await refresh();
       setMessage("已删除");
+      await refresh();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "删除失败");
+      setMessage(error instanceof Error ? error.message : "删除失败", "error");
     }
-  }, [api, refresh]);
+  }, [api, refresh, setMessage]);
 
   const rotateCredential = useCallback(async (kind: Credential["kind"]): Promise<void> => {
     const label = kind === "admin" ? "管理员令牌" : "MCP API Key";
@@ -127,18 +127,18 @@ export function useAdminData(token: string, onUnauthorized: () => void, onAdminT
       }
       setMessage(`${label}已轮转，请更新使用方配置`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "轮转失败");
+      setMessage(error instanceof Error ? error.message : "轮转失败", "error");
     }
-  }, [api, onAdminTokenRotated]);
+  }, [api, onAdminTokenRotated, setMessage]);
 
   const copyCredential = useCallback(async (credential: Credential): Promise<void> => {
     try {
       await navigator.clipboard.writeText(credential.token);
       setMessage(credential.kind === "admin" ? "管理员令牌已复制" : "MCP API Key 已复制");
     } catch {
-      setMessage("浏览器未允许复制，请显示后手动复制");
+      setMessage("浏览器未允许复制，请显示后手动复制", "error");
     }
-  }, []);
+  }, [setMessage]);
 
   const toggleCredentialReveal = useCallback((kind: Credential["kind"]): void => {
     setRevealedCredentials((current) => {
@@ -160,18 +160,20 @@ export function useAdminData(token: string, onUnauthorized: () => void, onAdminT
         ...current,
         [endpoint.id]: { kind: "success", text: `连接正常，发现 ${result.models.length} 个模型` }
       }));
+      setMessage(`${endpoint.name} 连接正常，发现 ${result.models.length} 个模型`);
     } catch (error) {
+      setMessage(`${endpoint.name}：${error instanceof Error ? error.message : "连接失败"}`, "error");
       setEndpointTests((current) => ({
         ...current,
         [endpoint.id]: { kind: "error", text: error instanceof Error ? error.message : "连接失败" }
       }));
     }
-  }, [api]);
+  }, [api, setMessage]);
 
   const refreshModelList = useCallback(async (): Promise<void> => {
     const activeEndpoints = endpoints.filter((endpoint) => endpoint.enabled);
     if (activeEndpoints.length === 0) {
-      setMessage("请先添加并启用一个 Ollama 端点");
+      setMessage("请先添加并启用一个 Ollama 端点", "info");
       return;
     }
     setRefreshingModels(true);
@@ -190,11 +192,11 @@ export function useAdminData(token: string, onUnauthorized: () => void, onAdminT
       const failedCount = results.filter((result) => result.status === "rejected").length;
       setMessage(failedCount > 0
         ? `已刷新 ${activeEndpoints.length - failedCount} 个端点，${failedCount} 个端点连接失败`
-        : `模型列表已刷新，共发现 ${nextModels.length} 个模型`);
+        : `模型列表已刷新，共发现 ${nextModels.length} 个模型`, failedCount > 0 ? "error" : "success");
     } finally {
       setRefreshingModels(false);
     }
-  }, [api, endpoints]);
+  }, [api, endpoints, setMessage]);
 
   const addDiscoveredModel = useCallback(async (model: DiscoveredModel): Promise<void> => {
     try {
@@ -211,9 +213,9 @@ export function useAdminData(token: string, onUnauthorized: () => void, onAdminT
       setMessage(`${model.modelName} 已添加为视觉模型`);
       await refresh();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "添加模型失败");
+      setMessage(error instanceof Error ? error.message : "添加模型失败", "error");
     }
-  }, [api, refresh]);
+  }, [api, refresh, setMessage]);
 
   return {
     capabilities,
@@ -227,7 +229,6 @@ export function useAdminData(token: string, onUnauthorized: () => void, onAdminT
     refreshingModels,
     revealedCredentials,
     loading,
-    message,
     endpointMap,
     deploymentMap,
     capabilityMap,

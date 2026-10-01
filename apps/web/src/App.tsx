@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Editor } from "./components/Editor";
+import { useNotify } from "./components/Notifications";
 import { useAdminData } from "./hooks/useAdminData";
 import { hashForPage, pageFromHash, PAGES, type PageKey } from "./navigation";
 import { CapabilitiesPage } from "./pages/CapabilitiesPage";
@@ -13,6 +14,7 @@ import type { EditorState, ResourceName } from "./types";
  * 用 hash 保存当前页面，刷新或直接粘贴链接都能回到同一页。
  */
 export function App() {
+  const notify = useNotify();
   const [token, setToken] = useState(() => sessionStorage.getItem("adminToken") ?? "");
   const [draftToken, setDraftToken] = useState("");
   const [page, setPage] = useState<PageKey>(() => pageFromHash(window.location.hash));
@@ -74,7 +76,10 @@ export function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="brand"><div className="signal-mark small"><span /><span /><span /></div><strong>Model Relay</strong></div>
+        {/* 品牌复用页面导航入口，链接同时支持键盘操作与打开控制台书签。 */}
+        <a className="brand" href={hashForPage("dashboard")} aria-label="Model Relay 控制台" onClick={(event) => { event.preventDefault(); navigate("dashboard"); }}>
+          <div className="signal-mark small" aria-hidden="true"><span /><span /><span /></div><strong>Model Relay</strong>
+        </a>
         <nav className="page-nav" aria-label="管理页面">
           {PAGES.map((item) => (
             <a
@@ -90,12 +95,11 @@ export function App() {
         </nav>
         <div className="top-actions">
           <span className={data.activeRouteCount > 0 ? "health ready" : "health"}>{data.activeRouteCount > 0 ? `${data.activeRouteCount} 条路由可用` : "等待配置路由"}</span>
-          <button className="text-button" onClick={handleUnauthorized}>退出</button>
+          <button className="text-button" onClick={() => { handleUnauthorized(); notify("已退出控制台", "info"); }}>退出</button>
         </div>
       </header>
 
       <main className="workspace">
-        {data.message && <div className="notice" role="status">{data.message}<button onClick={() => data.setMessage(null)} aria-label="关闭">×</button></div>}
 
         {page === "dashboard" && <DashboardPage data={data} onNavigate={navigate} />}
         {page === "ollama" && <OllamaPage data={data} onOpenEditor={openEditor} />}

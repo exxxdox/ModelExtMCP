@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { formatBytes, formatDuration, summarizeCapabilityTest, truncateImages } from "../capability-test";
 import type { AdminApi, Capability, CapabilityTestAttempt, CapabilityTestOutcome } from "../types";
+import { useNotify } from "./Notifications";
 
 export type CapabilityTestDialogProps = {
   capability: Capability;
@@ -39,6 +40,7 @@ function AttemptCard({ attempt }: { attempt: CapabilityTestAttempt }) {
  * 这样管理员看到的失败原因能直接指向要改的那一行配置。
  */
 export function CapabilityTestDialog({ capability, api, onClose }: CapabilityTestDialogProps) {
+  const notify = useNotify();
   const [outcome, setOutcome] = useState<CapabilityTestOutcome | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(true);
@@ -47,14 +49,18 @@ export function CapabilityTestDialog({ capability, api, onClose }: CapabilityTes
     setRunning(true);
     setError(null);
     try {
-      setOutcome(await api<CapabilityTestOutcome>(`capabilities/${capability.id}/test`, { method: "POST", body: "{}" }));
+      const next = await api<CapabilityTestOutcome>(`capabilities/${capability.id}/test`, { method: "POST", body: "{}" });
+      setOutcome(next);
+      // HTTP 成功不代表模型调用成功，用业务结果决定反馈颜色。
+      notify(summarizeCapabilityTest(next).text, next.ok ? "success" : "error");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "测试请求失败");
+      notify(caught instanceof Error ? caught.message : "测试请求失败", "error");
       setOutcome(null);
     } finally {
       setRunning(false);
     }
-  }, [api, capability.id]);
+  }, [api, capability.id, notify]);
 
   useEffect(() => { void run(); }, [run]);
 

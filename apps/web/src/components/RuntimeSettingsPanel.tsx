@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import type { AdminApi, RuntimeSettings } from "../types";
 import { Check, SectionHeader } from "./ui";
+import { useNotify } from "./Notifications";
 
 const BYTES_PER_MB = 1_024 * 1_024;
 
@@ -12,6 +13,7 @@ export type RuntimeSettingsPanelProps = {
 
 /** 图片大小与并发上限的表单；单位换算集中在这里，避免页面重复计算。 */
 export function RuntimeSettingsPanel({ settings, api, onSaved }: RuntimeSettingsPanelProps) {
+  const notify = useNotify();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,6 +36,8 @@ export function RuntimeSettingsPanel({ settings, api, onSaved }: RuntimeSettings
       onSaved(next);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "保存失败");
+      // 浮层提示操作结果，表单仍保留错误供修正时查看。
+      notify(caught instanceof Error ? caught.message : "保存失败", "error");
     } finally {
       setSaving(false);
     }
