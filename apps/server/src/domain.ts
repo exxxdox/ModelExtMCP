@@ -45,8 +45,6 @@ export type CapabilityRoute = {
 };
 
 export type ResolvedRoute = CapabilityRoute & {
-  capabilityKey: string;
-  capabilityName: string;
   endpointName: string;
   baseUrl: string;
   modelName: string;

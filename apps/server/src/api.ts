@@ -102,21 +102,18 @@ export function registerAdminApi(router: Router, database: AppDatabase, service:
 
   // 能力测试：拿代码里的静态样例输入去打真实链路。失败也返回 200 + 诊断，
   // 因为「哪条路由、哪个模型、卡在哪一步」正是管理员点这个按钮想知道的东西。
-  router.post("/capabilities/:id/test", async (request, response, next) => {
-    try {
-      const capability = database.listCapabilities().find((item) => item.id === request.params.id);
-      if (!capability) throw new Error("NOT_FOUND");
-      const definition = findCapabilityDefinition(capability.definitionKey);
-      if (!definition) {
-        response.status(404).json({ error: { code: "NO_DEFINITION", message: "该能力的代码定义已不存在，无法测试" } });
-        return;
-      }
-      // 样例先过一遍能力自己的入参契约：样例漂移时在这里就暴露，而不是拿坏参数去打上游。
-      const input = definition.inputSchema.parse(definition.sampleInput) as ImageInput;
-      response.json(await service.testCapability(capability.key, input, randomUUID()));
-    } catch (error) {
-      next(error);
+  // 异步路由的拒绝由 Express 5 自动交给 apiErrorHandler，无需逐路由转发。
+  router.post("/capabilities/:id/test", async (request, response) => {
+    const capability = database.listCapabilities().find((item) => item.id === request.params.id);
+    if (!capability) throw new Error("NOT_FOUND");
+    const definition = findCapabilityDefinition(capability.definitionKey);
+    if (!definition) {
+      response.status(404).json({ error: { code: "NO_DEFINITION", message: "该能力的代码定义已不存在，无法测试" } });
+      return;
     }
+    // 样例先过一遍能力自己的入参契约：样例漂移时在这里就暴露，而不是拿坏参数去打上游。
+    const input = definition.inputSchema.parse(definition.sampleInput) as ImageInput;
+    response.json(await service.testCapability(capability.key, input, randomUUID()));
   });
 
   router.get("/endpoints", (_request, response) => response.json(database.listEndpoints()));
@@ -126,13 +123,9 @@ export function registerAdminApi(router: Router, database: AppDatabase, service:
     database.deleteEndpoint(request.params.id!);
     response.status(204).end();
   });
-  router.post("/endpoints/test", async (request, response, next) => {
-    try {
-      const { baseUrl } = endpointSchema.pick({ baseUrl: true }).parse(request.body);
-      response.json(await testOllamaEndpoint(baseUrl));
-    } catch (error) {
-      next(error);
-    }
+  router.post("/endpoints/test", async (request, response) => {
+    const { baseUrl } = endpointSchema.pick({ baseUrl: true }).parse(request.body);
+    response.json(await testOllamaEndpoint(baseUrl));
   });
 
   router.get("/deployments", (_request, response) => response.json(database.listDeployments()));

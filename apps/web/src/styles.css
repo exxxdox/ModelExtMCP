@@ -29,7 +29,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .login-row input { flex: 1; min-width: 0; }
 
 .signal-mark { width: 58px; height: 36px; display: flex; gap: 5px; align-items: flex-end; }
-.signal-mark span { width: 14px; background: var(--blue); border-radius: 2px 2px 0 0; }
+/* 基础属性在原选择器内集中定义，避免文件末尾再用同名规则覆盖。 */
+.signal-mark span { width: 14px; background: var(--blue); border-radius: 4px 4px 1px 1px; }
 .signal-mark span:nth-child(1) { height: 38%; }
 .signal-mark span:nth-child(2) { height: 68%; }
 .signal-mark span:nth-child(3) { height: 100%; }
@@ -93,7 +94,7 @@ button.secondary:hover:not(:disabled), .text-button:hover:not(:disabled), .row-a
 .mcp-endpoint { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .mcp-endpoint span { color: var(--muted); font-size: 13px; }
 .mcp-endpoint code { overflow-wrap: anywhere; }
-.mcp-code { margin: 16px 0 0; padding: 16px; overflow-x: auto; background: #1f2c3d; border-radius: 6px; }
+.mcp-code { margin: 16px 0 0; padding: 20px; overflow-x: auto; background: #203149; border-radius: 10px; }
 .mcp-code code { display: block; width: max-content; min-width: 100%; padding: 0; color: #e6eef8; background: transparent; font-size: 13px; line-height: 1.65; }
 .mcp-hint { margin: 12px 0 0; color: var(--muted); font-size: 12px; }
 .mcp-body .empty { margin: 0; padding: 22px; border: 1px dashed var(--line); border-radius: 6px; }
@@ -104,7 +105,7 @@ button.secondary:hover:not(:disabled), .text-button:hover:not(:disabled), .row-a
 .credential h3 { margin: 0; font-size: 17px; }
 .credential p { margin: 5px 0 0; color: var(--muted); font-size: 13px; }
 .credential-value { margin: 18px 0 8px; overflow-x: auto; }
-.credential-value code { display: block; width: max-content; min-width: 100%; padding: 10px; }
+.credential-value code { display: block; width: max-content; min-width: 100%; border: 1px solid #e4ebf5; padding: 14px; border-radius: 8px; background: #f6f8fc; }
 .credential .credential-time { font-size: 12px; }
 .credential-actions { display: flex; gap: 7px; margin-top: 16px; }
 .credential-actions button { padding: 7px 11px; font-size: 13px; }
@@ -147,13 +148,13 @@ code { color: #254d78; background: #edf3f9; border-radius: 3px; padding: 3px 6px
 .connection.success { color: var(--teal); }
 .connection.error { color: var(--red); }
 .empty { padding: 34px; text-align: center !important; color: var(--muted); }
-.discovered-models { margin-top: 12px; padding: 18px; background: #f7f9fc; border: 1px solid var(--line); border-radius: 14px; }
+.discovered-models { margin-top: 12px; padding: 18px; background: #edf2fa; border: 1px solid var(--line); border-radius: 14px; }
 .discovered-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .discovered-heading h3 { margin: 0; font-size: 16px; }
 .discovered-heading span { color: var(--muted); font-size: 13px; }
 .discovered-empty { margin: 16px 0 0; color: var(--muted); }
 .model-chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
-.model-chip { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 12px; background: white; border: 1px solid #d8e1eb; border-radius: 5px; }
+.model-chip { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 14px 16px; background: white; border: 1px solid #d8e1eb; border-radius: 10px; }
 .model-chip > div { min-width: 0; }
 .model-chip strong, .model-chip span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .model-chip span { margin-top: 3px; color: var(--muted); font-size: 12px; }
@@ -253,7 +254,6 @@ input[type="checkbox"] { accent-color: var(--blue); flex-shrink: 0; cursor: poin
 .health.ready { border-color: #cbe9df; }
 .top-actions { flex-shrink: 0; }
 .brand { margin-right: 20px; }
-.signal-mark span { border-radius: 4px 4px 1px 1px; }
 .signal-mark span:nth-child(2) { background: #547ff0; }
 .signal-mark span:nth-child(3) { background: #11998b; }
 
@@ -273,13 +273,9 @@ td { line-height: 1.65; }
 td code { white-space: nowrap; }
 .row-actions button.danger:hover { color: #ae2038; background: #fff0f2; border-color: #f0bdc7; }
 .mcp-hint, .credential p, .next-step p { line-height: 1.7; }
-.mcp-code { background: #203149; padding: 20px; border-radius: 10px; }
 .mcp-endpoint code { display: block; max-width: 100%; overflow-x: auto; white-space: nowrap; }
 .notice { border-radius: 10px; border: 1px solid #cddffe; border-left: 3px solid var(--blue); }
 .notice button:hover { background: #d7e6fd; box-shadow: none; }
-.discovered-models { background: #edf2fa; }
-.model-chip { border-radius: 10px; padding: 14px 16px; }
-.credential-value code { border: 1px solid #e4ebf5; padding: 14px; border-radius: 8px; background: #f6f8fc; }
 .runtime-form small { min-height: 0; }
 /* 从字段标题高度对齐保存按钮，避免说明换行后依赖固定底部留白而错位。 */
 .runtime-save { align-self: start; padding-top: 28px; }
@@ -300,7 +296,6 @@ td code { white-space: nowrap; }
 @media (min-width: 761px) and (max-width: 980px) {
   .runtime-form { grid-template-columns: 1fr 1fr; }
   .runtime-save { grid-column: 1 / -1; justify-self: end; padding-top: 0; }
-  .runtime-save button { margin-bottom: 0; }
   .route-rail { grid-template-columns: 1fr 20px 1fr 20px 1fr 20px 1fr; padding: 16px 10px; }
   .route-rail > div { padding-inline: 8px; }
   .route-rail strong { font-size: 15px; }
@@ -310,7 +305,6 @@ td code { white-space: nowrap; }
   .section-heading > div:first-child { flex-basis: auto; }
   .section-actions { margin-left: 0; }
   .runtime-save { padding-top: 0; }
-  .runtime-save button { margin-bottom: 0; }
   .brand { margin-right: 0; }
   .health { display: none; }
   .stat-card { padding: 18px; }

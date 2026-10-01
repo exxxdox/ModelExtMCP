@@ -121,6 +121,18 @@ test("testing an unknown capability is a 404 rather than a silent empty run", as
   });
 });
 
+test("endpoint test errors reach the shared handler without per-route catches", async () => {
+  await withAdminApi(async (api) => {
+    const invalid = await api.request("endpoints/test", { method: "POST", body: "{}" });
+    assert.equal(invalid.status, 400);
+
+    // 端口 0 不对应可连接的上游，验证 await 拒绝的转发，不依赖外部 Ollama。
+    const failed = await api.request("endpoints/test", { method: "POST", body: JSON.stringify({ baseUrl: "http://127.0.0.1:0" }) });
+    assert.equal(failed.status, 502);
+    assert.equal((await failed.json() as { error: { code: string } }).error.code, "UPSTREAM_ERROR");
+  });
+});
+
 test("editing a capability updates name, key and description while keeping the definition", async () => {
   await withAdminApi(async (api, database) => {
     const [capability] = database.listCapabilities();

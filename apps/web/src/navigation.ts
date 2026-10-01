@@ -9,15 +9,14 @@ export type PageDefinition = {
   key: PageKey;
   /** 导航栏文案，同时也是页面标题。 */
   label: string;
-  /** 页面职责说明，用于导航栏提示与副标题。 */
-  description: string;
 };
 
+// 页面副标题由各页面自己提供，导航仅保留实际读取的标识与文案。
 export const PAGES: readonly PageDefinition[] = [
-  { key: "dashboard", label: "控制台", description: "总览链路状态与 Agent 接入配置" },
-  { key: "ollama", label: "Ollama 配置", description: "管理 Ollama 端点与其上的视觉模型" },
-  { key: "capabilities", label: "能力设置", description: "定义能力并绑定到具体模型" },
-  { key: "settings", label: "设置", description: "访问凭据与运行限制" }
+  { key: "dashboard", label: "控制台" },
+  { key: "ollama", label: "Ollama 配置" },
+  { key: "capabilities", label: "能力设置" },
+  { key: "settings", label: "设置" }
 ];
 
 const DEFAULT_PAGE: PageKey = "dashboard";

@@ -26,12 +26,6 @@ test("buildMcpConfig returns an HTTP MCP server entry with the bearer key", () =
   });
 });
 
-test("buildMcpConfig accepts a custom server name", () => {
-  const config = buildMcpConfig({ ...base, serverName: "team-relay" });
-
-  assert.deepEqual(Object.keys(config.mcpServers), ["team-relay"]);
-});
-
 test("buildMcpConfigText emits valid, indented JSON that round-trips", () => {
   const text = buildMcpConfigText(base);
 

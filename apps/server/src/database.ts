@@ -413,9 +413,9 @@ export class AppDatabase {
   }
 
   resolveRoutes(capabilityKey: string): ResolvedRoute[] {
+    // 能力标识只用于筛选，执行器不需要回传能力标识和名称。
     const rows = this.db.prepare(`
-      SELECT r.*, c.key AS capability_key, c.name AS capability_name,
-             e.name AS endpoint_name, e.base_url, d.model_name, d.timeout_ms
+      SELECT r.*, e.name AS endpoint_name, e.base_url, d.model_name, d.timeout_ms
       FROM capability_routes r
       JOIN capabilities c ON c.id = r.capability_id
       JOIN model_deployments d ON d.id = r.deployment_id
@@ -426,8 +426,6 @@ export class AppDatabase {
     `).all(capabilityKey);
     return rows.map((row) => ({
       ...mapRoute(row),
-      capabilityKey: String(row.capability_key),
-      capabilityName: String(row.capability_name),
       endpointName: String(row.endpoint_name),
       baseUrl: String(row.base_url),
       modelName: String(row.model_name),

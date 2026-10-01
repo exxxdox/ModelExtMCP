@@ -12,7 +12,6 @@ export type McpConfigOptions = {
   /** 页面所在源，即 `window.location.origin`。 */
   origin: string;
   apiKey: string;
-  serverName?: string;
   /** 为 true 时用占位符替换密钥，用于屏幕展示而非复制。 */
   redacted?: boolean;
 };
@@ -36,12 +35,12 @@ export function redactApiKey(): string {
 }
 
 export function buildMcpConfig(options: McpConfigOptions): McpServerConfig {
-  const name = options.serverName ?? DEFAULT_SERVER_NAME;
   const key = options.redacted ? redactApiKey() : options.apiKey;
 
   return {
     mcpServers: {
-      [name]: {
+      // 控制台始终使用同一名称，不提供没有实际调用方的名称覆盖选项。
+      [DEFAULT_SERVER_NAME]: {
         type: "http",
         url: mcpServerUrl(options.origin),
         headers: { Authorization: `Bearer ${key}` }
