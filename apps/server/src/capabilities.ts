@@ -41,6 +41,9 @@ export type CapabilityDefinition = {
   /** Agent 判断该不该调用这个工具的说明，也就是 MCP 工具描述的全部内容。 */
   defaultDescription: string;
   executorType: "ollama_vision";
+  /** 提供者与任务由能力实现决定，管理员仅选择端点和模型。 */
+  externalProvider: "ollama";
+  defaultPrompt: string;
   inputSchema: ZodType;
   /**
    * 管理端「测试」按钮用的静态样例输入。
@@ -64,6 +67,9 @@ export type CapabilityParameter = {
 export type CapabilityDefinitionView = {
   definitionKey: string;
   executorType: "ollama_vision";
+  /** 提供者与任务由能力实现决定，管理员仅选择端点和模型。 */
+  externalProvider: "ollama";
+  defaultPrompt: string;
   /** 代码基线：管理端用它展示默认值并提供恢复，与数据库中的当前值分开。 */
   defaultKey: string;
   defaultName: string;
@@ -83,6 +89,8 @@ export const VISION_CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
     defaultName: "图像理解",
     defaultDescription: "当当前模型无法查看图片时，把图片交给已配置的 Ollama 视觉模型：描述图片内容并回答关于图片的问题",
     executorType: "ollama_vision",
+    externalProvider: "ollama",
+    defaultPrompt: "请准确描述图片内容，并回答调用者关于图片的问题。",
     inputSchema: IMAGE_INPUT_SCHEMA,
     sampleInput: {
       imageBase64: SAMPLE_PNG_BASE64,
@@ -109,6 +117,8 @@ export function viewCapabilityDefinition(definition: CapabilityDefinition): Capa
   return {
     definitionKey: definition.definitionKey,
     executorType: definition.executorType,
+    externalProvider: definition.externalProvider,
+    defaultPrompt: definition.defaultPrompt,
     defaultKey: definition.defaultKey,
     defaultName: definition.defaultName,
     defaultDescription: definition.defaultDescription,

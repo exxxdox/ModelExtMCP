@@ -14,8 +14,9 @@ export type PageDefinition = {
 // 页面副标题由各页面自己提供，导航仅保留实际读取的标识与文案。
 export const PAGES: readonly PageDefinition[] = [
   { key: "dashboard", label: "控制台" },
-  { key: "ollama", label: "Ollama 配置" },
   { key: "capabilities", label: "能力设置" },
+  // 保留已有 hash，避免页面改名后用户保存的 Ollama 链接失效。
+  { key: "ollama", label: "外部能力" },
   { key: "settings", label: "设置" }
 ];
 

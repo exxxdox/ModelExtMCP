@@ -10,6 +10,8 @@ export type DashboardPageProps = {
 
 /** 控制台：只做状态总览与接入，具体配置都在各自页面完成。 */
 export function DashboardPage({ data, onNavigate }: DashboardPageProps) {
+  // 旧部署可继续保留；总览只统计路由实际选择的模型，避免把未使用配置算作已选。
+  const selectedModelCount = new Set(data.routes.map((route) => route.deploymentId)).size;
   return (
     <>
       <PageHeader
@@ -21,7 +23,7 @@ export function DashboardPage({ data, onNavigate }: DashboardPageProps) {
       <div className="stat-grid">
         <StatCard label="启用能力" value={`${data.enabledCapabilityCount} / ${data.capabilities.length}`} hint="Agent 可调用的业务能力" />
         <StatCard label="生效路由" value={`${data.activeRouteCount} 条`} hint="已绑定能力与模型的路径" tone={data.activeRouteCount > 0 ? "on" : "off"} />
-        <StatCard label="在线模型配置" value={`${data.enabledDeploymentCount} / ${data.deployments.length}`} hint="已启用的视觉模型部署" />
+        <StatCard label="已选模型" value={`${selectedModelCount} 个`} hint="能力路由使用的模型配置" />
         <StatCard label="Ollama 端点" value={`${data.enabledEndpointCount} / ${data.endpoints.length}`} hint="可访问的 Ollama 服务" />
       </div>
 
@@ -30,14 +32,13 @@ export function DashboardPage({ data, onNavigate }: DashboardPageProps) {
         <i aria-hidden="true" />
         <RailStep label="路由" value={`${data.activeRouteCount} 条生效`} />
         <i aria-hidden="true" />
-        <RailStep label="模型部署" value={`${data.enabledDeploymentCount} 个在线配置`} />
+        <RailStep label="模型" value={`${selectedModelCount} 个已选模型`} />
         <i aria-hidden="true" />
         <RailStep label="Ollama" value={`${data.enabledEndpointCount} 个端点`} />
       </section>
 
       {data.activeRouteCount === 0 && <NextStepGuide
         hasEndpoint={data.endpoints.length > 0}
-        hasDeployment={data.deployments.length > 0}
         onNavigate={onNavigate}
       />}
 
@@ -65,12 +66,11 @@ function RailStep({ label, value }: { label: string; value: string }) {
 }
 
 /** 链路未就绪时给出下一步该去哪一页，避免新用户面对空表格。 */
-function NextStepGuide({ hasEndpoint, hasDeployment, onNavigate }: { hasEndpoint: boolean; hasDeployment: boolean; onNavigate: (page: PageKey) => void }) {
+function NextStepGuide({ hasEndpoint, onNavigate }: { hasEndpoint: boolean; onNavigate: (page: PageKey) => void }) {
+  // 模型在能力编辑中直接选择，首次接入无需另走一遍模型部署页面。
   const step = !hasEndpoint
-    ? { text: "还没有可用的 Ollama 端点，先登记服务地址。", page: "ollama" as const, action: "去配置 Ollama" }
-    : !hasDeployment
-      ? { text: "端点已就绪，接下来登记可用于图片理解的模型。", page: "ollama" as const, action: "去添加模型" }
-      : { text: "模型已登记，最后把能力绑定到模型，MCP 才会开始处理图片。", page: "capabilities" as const, action: "去绑定能力" };
+    ? { text: "还没有可用的 Ollama 端点，先登记服务地址。", page: "ollama" as const, action: "去配置外部能力" }
+    : { text: "在能力编辑的外部能力路由中选择 Ollama 端点与模型，完成接入。", page: "capabilities" as const, action: "去编辑能力" };
 
   return (
     <section className="next-step">

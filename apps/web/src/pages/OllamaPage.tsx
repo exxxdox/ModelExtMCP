@@ -1,20 +1,22 @@
-import { EmptyRow, PageHeader, RowActions, SectionHeader, Status } from "../components/ui";
+import { useState } from "react";
+import { EmptyRow, PageHeader, SectionHeader } from "../components/ui";
 import type { AdminData } from "../hooks/useAdminData";
-import type { Deployment, DiscoveredModel, ResourceName } from "../types";
+import type { ResourceName } from "../types";
 
 export type OllamaPageProps = {
   data: AdminData;
   onOpenEditor: (resource: ResourceName, id?: string) => void;
 };
 
-/** Ollama 配置：端点与端点上的视觉模型，两件事放在一页便于对照测试结果。 */
+/** 外部能力仅管理服务端点；模型选择随能力路由编辑，避免重复配置。 */
 export function OllamaPage({ data, onOpenEditor }: OllamaPageProps) {
+  const [toggling, setToggling] = useState<Set<string>>(() => new Set());
   return (
     <>
-      <PageHeader title="Ollama 配置" description="登记可访问的 Ollama 服务，并把这些服务上真正支持图片的模型加进来。" />
+      <PageHeader title="外部能力" description="目前支持 Ollama。登记服务地址后，在能力编辑中选择端点与模型。" />
 
       <section className="config-section">
-        <SectionHeader title="Ollama 端点" description="可访问的 Ollama 服务根地址。" action="新增端点" onAdd={() => onOpenEditor("endpoints")} />
+        <SectionHeader title="Ollama" description="可访问的 Ollama 服务根地址。" action="新增端点" onAdd={() => onOpenEditor("endpoints")} />
         <div className="table-wrap">
           <table>
             <thead><tr><th>名称</th><th>地址</th><th>状态</th><th>连接</th><th /></tr></thead>
@@ -26,7 +28,11 @@ export function OllamaPage({ data, onOpenEditor }: OllamaPageProps) {
                   <tr key={item.id}>
                     <td className="strong">{item.name}</td>
                     <td><code>{item.baseUrl}</code></td>
-                    <td><Status enabled={item.enabled} /></td>
+                    <td><button className="capability-switch" role="switch" aria-checked={item.enabled} aria-label={`启用${item.name}`} disabled={toggling.has(item.id)} aria-busy={toggling.has(item.id)} onClick={async () => {
+                      setToggling((current) => new Set(current).add(item.id));
+                      try { await data.setEndpointEnabled(item); }
+                      finally { setToggling((current) => { const next = new Set(current); next.delete(item.id); return next; }); }
+                    }}><span aria-hidden="true" className="switch-track"><span /></span><span className="switch-label">{item.enabled ? "启用" : "停用"}</span></button></td>
                     <td><span className={`connection ${test?.kind ?? "idle"}`}>{test?.text ?? "尚未测试"}</span></td>
                     <td>
                       <div className="row-actions">
@@ -43,77 +49,6 @@ export function OllamaPage({ data, onOpenEditor }: OllamaPageProps) {
         </div>
       </section>
 
-      <section className="config-section">
-        <SectionHeader
-          title="模型部署"
-          description="端点上的具体视觉模型及超时设置。"
-          action="新增模型"
-          onAdd={() => onOpenEditor("deployments")}
-          secondaryAction={data.refreshingModels ? "刷新中…" : "刷新模型列表"}
-          onSecondary={() => void data.refreshModelList()}
-          secondaryDisabled={data.refreshingModels}
-        />
-        <div className="table-wrap">
-          <table>
-            <thead><tr><th>模型</th><th>端点</th><th>超时</th><th>视觉</th><th>状态</th><th /></tr></thead>
-            <tbody>
-              {data.deployments.length === 0 && <EmptyRow columns={6} text="添加端点后，再登记视觉模型" />}
-              {data.deployments.map((item) => (
-                <tr key={item.id}>
-                  <td className="strong">{item.modelName}</td>
-                  <td>{data.endpointMap.get(item.endpointId)?.name ?? "未知端点"}</td>
-                  <td>{Math.round(item.timeoutMs / 1000)} 秒</td>
-                  <td>{item.supportsVision ? "支持" : "未验证"}</td>
-                  <td><Status enabled={item.enabled} /></td>
-                  <td><RowActions onEdit={() => onOpenEditor("deployments", item.id)} onDelete={() => void data.remove("deployments", item.id)} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {data.discoveredModels && (
-          <DiscoveredModels
-            models={data.discoveredModels}
-            deployments={data.deployments}
-            onAdd={data.addDiscoveredModel}
-            onDelete={(deploymentId) => data.remove("deployments", deploymentId)}
-          />
-        )}
-      </section>
     </>
-  );
-}
-
-type DiscoveredModelsProps = {
-  models: DiscoveredModel[];
-  deployments: Deployment[];
-  onAdd: (model: DiscoveredModel) => Promise<void>;
-  onDelete: (deploymentId: string) => Promise<void>;
-};
-
-function DiscoveredModels({ models, deployments, onAdd, onDelete }: DiscoveredModelsProps) {
-  const deploymentMap = new Map(deployments.map((deployment) => [`${deployment.endpointId}:${deployment.modelName}`, deployment]));
-
-  return (
-    <div className="discovered-models">
-      <div className="discovered-heading"><h3>Ollama 模型列表</h3><span>{models.length} 个</span></div>
-      {models.length === 0
-        ? <p className="discovered-empty">启用的端点未返回任何模型。</p>
-        : (
-          <div className="model-chips">
-            {models.map((model) => {
-              const deployment = deploymentMap.get(`${model.endpointId}:${model.modelName}`);
-              return (
-                <div className="model-chip" key={`${model.endpointId}:${model.modelName}`}>
-                  <div><strong>{model.modelName}</strong><span>{model.endpointName}</span></div>
-                  {deployment
-                    ? <button className="danger-text" onClick={() => void onDelete(deployment.id)}>删除配置</button>
-                    : <button onClick={() => void onAdd(model)}>添加为视觉模型</button>}
-                </div>
-              );
-            })}
-          </div>
-        )}
-    </div>
   );
 }

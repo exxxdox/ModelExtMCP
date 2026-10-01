@@ -9,9 +9,10 @@ import type { VisionService } from "./service.js";
 
 const capabilitySchema = z.object({
   // 标识就是 MCP 工具名，所以直接复用工具名规则：不合法的话 Agent 侧根本调不动。
-  key: z.string().trim().regex(MCP_TOOL_NAME_PATTERN, "标识即 MCP 工具名，只能用小写字母开头，后接小写字母、数字、下划线或短横线，长度 2-64"),
-  name: z.string().trim().min(1).max(80),
-  description: z.string().trim().min(1).max(500),
+  // 留空表示采用代码默认值；非空标识仍必须符合工具名约束。
+  key: z.string().trim().refine((value) => value === "" || MCP_TOOL_NAME_PATTERN.test(value), "标识即 MCP 工具名，只能用小写字母开头，后接小写字母、数字、下划线或短横线，长度 2-64").default(""),
+  name: z.string().trim().max(80).default(""),
+  description: z.string().trim().max(500).default(""),
   enabled: z.boolean().default(true),
   version: z.number().int().positive().optional()
 });
@@ -34,8 +35,16 @@ const routeSchema = z.object({
   capabilityId: z.string().uuid(),
   deploymentId: z.string().uuid(),
   priority: z.number().int().min(0).max(10_000).default(100),
-  promptTemplate: z.string().trim().min(1).max(4_000),
   enabled: z.boolean().default(true)
+});
+
+const capabilityConfigurationSchema = capabilitySchema.omit({ enabled: true }).extend({
+  version: z.number().int().positive(),
+  routes: z.array(deploymentSchema.omit({ enabled: true }).extend({
+    id: z.string().uuid().optional(),
+    priority: routeSchema.shape.priority,
+    enabled: routeSchema.shape.enabled
+  }))
 });
 
 const runtimeSettingsSchema = z.object({
@@ -99,6 +108,15 @@ export function registerAdminApi(router: Router, database: AppDatabase, service:
     const input = capabilitySchema.extend({ version: z.number().int().positive() }).parse(request.body);
     response.json(toCapabilityView(database.updateCapability(request.params.id!, input)));
   });
+  router.patch("/capabilities/:id/enabled", (request, response) => {
+    const input = z.object({ enabled: z.boolean(), version: z.number().int().positive() }).parse(request.body);
+    response.json(toCapabilityView(database.updateCapabilityEnabled(request.params.id!, input)));
+  });
+  // 一次保存整个编辑弹窗，避免逐个请求造成能力与路由不一致。
+  router.put("/capabilities/:id/configuration", (request, response) => {
+    const input = capabilityConfigurationSchema.parse(request.body);
+    response.json(toCapabilityView(database.updateCapabilityConfiguration(request.params.id!, input)));
+  });
 
   // 能力测试：拿代码里的静态样例输入去打真实链路。失败也返回 200 + 诊断，
   // 因为「哪条路由、哪个模型、卡在哪一步」正是管理员点这个按钮想知道的东西。
@@ -118,7 +136,12 @@ export function registerAdminApi(router: Router, database: AppDatabase, service:
 
   router.get("/endpoints", (_request, response) => response.json(database.listEndpoints()));
   router.post("/endpoints", (request, response) => response.status(201).json(database.createEndpoint(endpointSchema.parse(request.body))));
-  router.put("/endpoints/:id", (request, response) => response.json(database.updateEndpoint(request.params.id!, endpointSchema.parse(request.body))));
+  // 启用状态由列表开关单独保存；旧编辑请求携带的 enabled 也不能覆盖较新的开关状态。
+  router.put("/endpoints/:id", (request, response) => response.json(database.updateEndpoint(request.params.id!, endpointSchema.omit({ enabled: true }).parse(request.body))));
+  router.patch("/endpoints/:id/enabled", (request, response) => {
+    const { enabled } = z.object({ enabled: z.boolean() }).parse(request.body);
+    response.json(database.updateEndpointEnabled(request.params.id!, enabled));
+  });
   router.delete("/endpoints/:id", (request, response) => {
     database.deleteEndpoint(request.params.id!);
     response.status(204).end();
@@ -151,6 +174,10 @@ export function apiErrorHandler(error: unknown, _request: Request, response: Res
     return;
   }
   const message = error instanceof Error ? error.message : "INTERNAL_ERROR";
+  if (message === "INVALID_CONFIGURATION") {
+    response.status(400).json({ error: { code: "VALIDATION_ERROR", message: "路由或外部能力不存在，或路由不属于当前能力" } });
+    return;
+  }
   if (message === "NOT_FOUND") {
     response.status(404).json({ error: { code: message, message: "记录不存在" } });
     return;

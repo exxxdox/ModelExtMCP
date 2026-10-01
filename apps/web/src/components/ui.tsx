@@ -54,12 +54,13 @@ export function EmptyRow({ columns, text }: { columns: number; text: string }) {
   return <tr><td colSpan={columns} className="empty">{text}</td></tr>;
 }
 
+// 多行字段也传递默认值提示和长度限制，保证描述与普通输入采用相同的编辑规则。
 export function Field({ label, multiline, ...props }: { label: string; multiline?: boolean } & InputHTMLAttributes<HTMLInputElement>) {
   return (
     <label className="field">
       <span>{label}</span>
       {multiline
-        ? <textarea name={props.name} defaultValue={String(props.defaultValue ?? "")} required={props.required} />
+        ? <textarea name={props.name} defaultValue={String(props.defaultValue ?? "")} required={props.required} placeholder={props.placeholder} maxLength={props.maxLength} />
         : <input {...props} />}
     </label>
   );

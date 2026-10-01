@@ -28,3 +28,9 @@ test("page keys and labels stay unique so the nav renders unambiguous tabs", () 
   assert.equal(new Set(PAGES.map((page) => page.key)).size, PAGES.length);
   assert.equal(new Set(PAGES.map((page) => page.label)).size, PAGES.length);
 });
+
+test("capabilities is second and external capabilities preserves the Ollama route", () => {
+  assert.equal(PAGES[1]?.key, "capabilities");
+  assert.equal(PAGES.find((page) => page.key === "ollama")?.label, "外部能力");
+  assert.equal(hashForPage("ollama"), "#/ollama");
+});

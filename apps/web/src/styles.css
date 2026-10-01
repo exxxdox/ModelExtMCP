@@ -386,3 +386,34 @@ input:focus, textarea:focus, select:focus { box-shadow: 0 0 0 3px rgba(69, 126, 
   .toast-progress { display: none; }
   button:hover:not(:disabled) { transform: none; }
 }
+
+/* 页签沿用现有蓝白主题；保持面板挂载保留草稿，hidden 必须优先于布局样式。 */
+.capability-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.capability-editor [hidden] { display: none; }
+.editor-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 24px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.editor-tabs button { background: var(--inset); color: var(--muted); border: 1px solid var(--line); }
+.editor-tabs button:hover:not(:disabled) { background: #e4efff; color: var(--accent-text); }
+.editor-tabs button[aria-selected="true"] { background: var(--accent); color: white; border-color: var(--accent); }
+.editor-tabs button[aria-selected="true"]:hover:not(:disabled) { background: var(--accent-hover); color: white; }
+.route-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.route-toolbar h3, .route-toolbar p { margin: 0; }
+.route-toolbar p { flex: 1; min-width: 180px; }
+.route-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 20px; }
+.route-numbers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.route-draft { min-width: 0; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--inset); }
+@media (max-width: 720px) { .route-list { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 420px) { .editor-tabs button { flex: 1 1 40%; padding: 10px 6px; } .route-draft { padding: 12px; } }
+
+/* 独立说明没有前置输入框，使用正常边距而不继承字段提示的负边距。 */
+.capability-default-hint, .route-task { margin: 0 0 18px; }
+/* 保持开关宽度、位置和文案稳定；加载反馈用 aria-busy，避免通用按钮动效引起抖动。 */
+.capability-switch { display: inline-flex; align-items: center; gap: 10px; background: transparent; color: var(--muted); border: 0; box-shadow: none; white-space: nowrap; padding: 10px 0; width: 86px; justify-content: flex-start; }
+.capability-switch:hover:not(:disabled), .capability-switch:active:not(:disabled) { background: transparent; box-shadow: none; transform: none; }
+.capability-switch:disabled { opacity: 1; }
+.switch-label { width: 36px; }
+.capability-switch[aria-checked="true"] { color: var(--success); }
+.switch-track { display: block; width: 40px; padding: 3px; border-radius: 16px; background: var(--muted); }
+.switch-track span { display: block; width: 16px; height: 16px; border-radius: 50%; background: white; transition: transform .15s; }
+.capability-switch[aria-checked="true"] .switch-track { background: var(--success); }
+.capability-switch[aria-checked="true"] .switch-track span { transform: translateX(18px); }
+@media (prefers-reduced-motion: reduce) { .switch-track span { transition: none; } }

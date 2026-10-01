@@ -50,3 +50,9 @@ export type ResolvedRoute = CapabilityRoute & {
   modelName: string;
   timeoutMs: number;
 };
+
+/** 集中编辑只接收模型选择；部署仍独立存储，避免改动影响共享该部署的能力。 */
+export type CapabilityConfiguration = Pick<Capability, "key" | "name" | "description" | "version"> & {
+  routes: Array<Pick<CapabilityRoute, "priority" | "enabled"> &
+    Pick<ModelDeployment, "endpointId" | "modelName" | "timeoutMs" | "supportsVision"> & { id?: string | undefined }>;
+};

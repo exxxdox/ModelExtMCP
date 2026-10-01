@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { CapabilityTestDialog } from "../components/CapabilityTestDialog";
-import { EmptyRow, PageHeader, RowActions, SectionHeader, Status } from "../components/ui";
+import { EmptyRow, PageHeader, SectionHeader } from "../components/ui";
 import type { AdminData } from "../hooks/useAdminData";
 import type { Capability, ResourceName } from "../types";
 
@@ -12,6 +12,7 @@ export type CapabilitiesPageProps = {
 /** 能力设置：先定义 Agent 能调用的能力，再把能力绑到具体模型。 */
 export function CapabilitiesPage({ data, onOpenEditor }: CapabilitiesPageProps) {
   // 测试弹窗自己持有目标能力：测试是「看一眼」的操作，不该进编辑器那套共享状态。
+  const [toggling, setToggling] = useState<Set<string>>(() => new Set());
   const [testing, setTesting] = useState<Capability | null>(null);
 
   return (
@@ -19,10 +20,10 @@ export function CapabilitiesPage({ data, onOpenEditor }: CapabilitiesPageProps) 
       <PageHeader title="能力设置" description="定义 Agent 可调用的能力标识，并决定每个能力最终由哪些模型提供。" />
 
       <section className="config-section">
-        <SectionHeader title="能力" description="能力由服务端代码提供，数量固定；这里可以调整 Agent 看到的名称、标识与说明。一个能力就是一个 MCP 工具：标识即工具名，说明即工具描述的全部内容。" />
+        <SectionHeader title="能力" description="能力由服务端代码提供，数量固定；这里可以调整 Agent 看到的名称、标识与描述，并在编辑中配置外部能力路由。一个能力就是一个 MCP 工具：标识即工具名，描述即工具描述的全部内容。" />
         <div className="table-wrap">
           <table>
-            <thead><tr><th>名称</th><th>工具名（能力标识）</th><th>Agent 可见说明</th><th>状态</th><th /></tr></thead>
+            <thead><tr><th>名称</th><th>工具名（能力标识）</th><th>描述</th><th>状态</th><th /></tr></thead>
             <tbody>
               {data.capabilities.length === 0 && <EmptyRow columns={5} text="服务端未注册可用的能力" />}
               {data.capabilities.map((item) => (
@@ -30,7 +31,11 @@ export function CapabilitiesPage({ data, onOpenEditor }: CapabilitiesPageProps) 
                   <td className="strong">{item.name}</td>
                   <td><code>{item.key}</code></td>
                   <td>{item.description}</td>
-                  <td><Status enabled={item.enabled} /></td>
+                  <td><button className="capability-switch" role="switch" aria-checked={item.enabled} aria-label={`启用${item.name}`} disabled={toggling.has(item.id)} aria-busy={toggling.has(item.id)} onClick={async () => {
+                    setToggling((current) => new Set(current).add(item.id));
+                    try { await data.setCapabilityEnabled(item); }
+                    finally { setToggling((current) => { const next = new Set(current); next.delete(item.id); return next; }); }
+                  }}><span aria-hidden="true" className="switch-track"><span /></span><span className="switch-label">{item.enabled ? "启用" : "停用"}</span></button></td>
                   <td><div className="row-actions"><button onClick={() => setTesting(item)}>测试</button><button onClick={() => onOpenEditor("capabilities", item.id)}>编辑</button></div></td>
                 </tr>
               ))}
@@ -39,30 +44,7 @@ export function CapabilitiesPage({ data, onOpenEditor }: CapabilitiesPageProps) 
         </div>
       </section>
 
-      <section className="config-section">
-        <SectionHeader title="能力路由" description="一个能力里只有“询问 Ollama 模型”这一步需要路由：这里决定这一步用哪个模型、超时多久、默认提示词是什么。图片格式与大小校验、参数解析等固定逻辑由服务端完成，不在此配置。同一能力可配置多条回退路由，按优先级依次尝试。" action="新增路由" onAdd={() => onOpenEditor("routes")} />
-        <div className="table-wrap">
-          <table>
-            <thead><tr><th>能力</th><th>模型</th><th>端点</th><th>优先级</th><th>状态</th><th /></tr></thead>
-            <tbody>
-              {data.routes.length === 0 && <EmptyRow columns={6} text="绑定能力与模型后，MCP 才能处理图片" />}
-              {data.routes.map((item) => {
-                const deployment = data.deploymentMap.get(item.deploymentId);
-                return (
-                  <tr key={item.id}>
-                    <td className="strong">{data.capabilityMap.get(item.capabilityId)?.name ?? "未知能力"}</td>
-                    <td>{deployment?.modelName ?? "未知模型"}</td>
-                    <td>{deployment ? data.endpointMap.get(deployment.endpointId)?.name ?? "—" : "—"}</td>
-                    <td>{item.priority}</td>
-                    <td><Status enabled={item.enabled} /></td>
-                    <td><RowActions onEdit={() => onOpenEditor("routes", item.id)} onDelete={() => void data.remove("routes", item.id)} /></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      {/* 路由随所属能力编辑，避免在独立列表中重新选择能力。 */}
 
       {testing && <CapabilityTestDialog capability={testing} api={data.api} onClose={() => setTesting(null)} />}
     </>

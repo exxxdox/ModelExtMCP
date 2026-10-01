@@ -84,7 +84,7 @@ try {
   await page.setViewportSize({ width: 320, height: 844 });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "320px 大字号布局没有横向溢出");
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.getByRole("link", { name: "Ollama 配置" }).click();
+  await page.getByRole("link", { name: "外部能力" }).click();
   await page.getByRole("button", { name: "新增端点" }).click();
   await page.getByRole("textbox", { name: "端点名称" }).fill("测试端点");
   await page.getByRole("textbox", { name: "服务根地址" }).fill("http://localhost:11434");

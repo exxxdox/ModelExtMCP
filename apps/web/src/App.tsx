@@ -116,6 +116,9 @@ export function App() {
           endpoints={data.endpoints}
           deployments={data.deployments}
           routes={data.routes}
+          discoveredModels={data.discoveredModels}
+          refreshingModels={data.refreshingModels}
+          onRefreshModels={data.refreshModelList}
           api={data.api}
           onClose={() => setEditor(null)}
           onSaved={async () => { setEditor(null); data.setMessage("配置已保存"); await data.refresh(); }}

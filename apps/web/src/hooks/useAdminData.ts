@@ -48,7 +48,8 @@ export type AdminData = {
   toggleCredentialReveal: (kind: Credential["kind"]) => void;
   testEndpoint: (endpoint: Endpoint) => Promise<void>;
   refreshModelList: () => Promise<void>;
-  addDiscoveredModel: (model: DiscoveredModel) => Promise<void>;
+  setEndpointEnabled: (endpoint: Endpoint) => Promise<void>;
+  setCapabilityEnabled: (capability: Capability) => Promise<void>;
   setRuntimeSettings: (settings: RuntimeSettings) => void;
   setMessage: Notify;
 };
@@ -101,6 +102,34 @@ export function useAdminData(token: string, onUnauthorized: () => void, onAdminT
   const endpointMap = useMemo(() => new Map(endpoints.map((item) => [item.id, item])), [endpoints]);
   const deploymentMap = useMemo(() => new Map(deployments.map((item) => [item.id, item])), [deployments]);
   const capabilityMap = useMemo(() => new Map(capabilities.map((item) => [item.id, item])), [capabilities]);
+
+  const setCapabilityEnabled = useCallback(async (capability: Capability): Promise<void> => {
+    try {
+      // 独立开关只修改启用状态，避免将列表旧值覆盖进描述或路由。
+      const next = await api<Capability>(`capabilities/${capability.id}/enabled`, {
+        method: "PATCH", body: JSON.stringify({ enabled: !capability.enabled, version: capability.version })
+      });
+      setCapabilities((current) => current.map((item) => item.id === next.id ? next : item));
+      setMessage(`${next.name}已${next.enabled ? "启用" : "停用"}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "切换失败", "error");
+    }
+  }, [api, setMessage]);
+
+  const setEndpointEnabled = useCallback(async (endpoint: Endpoint): Promise<void> => {
+    try {
+      // 状态单独保存，端点地址与名称不参与列表开关操作。
+      const next = await api<Endpoint>(`endpoints/${endpoint.id}/enabled`, {
+        method: "PATCH", body: JSON.stringify({ enabled: !endpoint.enabled })
+      });
+      setEndpoints((current) => current.map((item) => item.id === next.id ? next : item));
+      // 启用端点的集合改变后，下一次能力编辑需要重新发现模型。
+      setDiscoveredModels(null);
+      setMessage(`${next.name}已${next.enabled ? "启用" : "停用"}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "切换失败", "error");
+    }
+  }, [api, setMessage]);
 
   const remove = useCallback(async (resource: ResourceName, id: string): Promise<void> => {
     if (!window.confirm("确定删除这条配置？被其他配置引用时不会删除。")) return;
@@ -198,25 +227,6 @@ export function useAdminData(token: string, onUnauthorized: () => void, onAdminT
     }
   }, [api, endpoints, setMessage]);
 
-  const addDiscoveredModel = useCallback(async (model: DiscoveredModel): Promise<void> => {
-    try {
-      await api<Deployment>("deployments", {
-        method: "POST",
-        body: JSON.stringify({
-          endpointId: model.endpointId,
-          modelName: model.modelName,
-          supportsVision: true,
-          timeoutMs: 60_000,
-          enabled: true
-        })
-      });
-      setMessage(`${model.modelName} 已添加为视觉模型`);
-      await refresh();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "添加模型失败", "error");
-    }
-  }, [api, refresh, setMessage]);
-
   return {
     capabilities,
     endpoints,
@@ -232,7 +242,12 @@ export function useAdminData(token: string, onUnauthorized: () => void, onAdminT
     endpointMap,
     deploymentMap,
     capabilityMap,
-    activeRouteCount: routes.filter((route) => route.enabled).length,
+    // 能力停用后路由仍保留，但不再计入可用路径。
+    activeRouteCount: routes.filter((route) => {
+      const deployment = deploymentMap.get(route.deploymentId);
+      return route.enabled && capabilityMap.get(route.capabilityId)?.enabled && deployment?.enabled
+        && deployment.supportsVision && endpointMap.get(deployment.endpointId)?.enabled;
+    }).length,
     enabledCapabilityCount: capabilities.filter((item) => item.enabled).length,
     enabledEndpointCount: endpoints.filter((item) => item.enabled).length,
     enabledDeploymentCount: deployments.filter((item) => item.enabled).length,
@@ -245,7 +260,8 @@ export function useAdminData(token: string, onUnauthorized: () => void, onAdminT
     toggleCredentialReveal,
     testEndpoint,
     refreshModelList,
-    addDiscoveredModel,
+    setEndpointEnabled,
+    setCapabilityEnabled,
     setRuntimeSettings,
     setMessage
   };

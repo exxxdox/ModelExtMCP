@@ -10,6 +10,9 @@ export type CapabilityParameter = {
 export type CapabilityDefinition = {
   definitionKey: string;
   executorType: "ollama_vision";
+  /** 提供者与默认任务由代码定义，路由只负责选择端点和模型。 */
+  externalProvider: "ollama";
+  defaultPrompt: string;
   /** 代码基线，用来展示默认值并支持一键恢复。 */
   defaultKey: string;
   defaultName: string;

@@ -3,12 +3,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import {
+  findCapabilityDefinition,
   MCP_TOOL_NAME_PATTERN,
   PRIMARY_CAPABILITY_DEFINITION_KEY,
   VISION_CAPABILITY_DEFINITIONS
 } from "./capabilities.js";
 import type {
   Capability,
+  CapabilityConfiguration,
   CapabilityRoute,
   ModelDeployment,
   OllamaEndpoint,
@@ -310,12 +312,76 @@ export class AppDatabase {
   }
 
   updateCapability(id: string, input: Pick<Capability, "key" | "name" | "description" | "enabled" | "version">): Capability {
+    const definition = findCapabilityDefinition(this.getCapability(id).definitionKey);
+    // 两个保存入口统一解析留空字段，避免写入无效工具名；未知定义没有可靠的默认值。
+    const key = input.key.trim() || definition?.defaultKey;
+    const name = input.name.trim() || definition?.defaultName;
+    const description = input.description.trim() || definition?.defaultDescription;
+    if (!key || !name || !description) throw new Error("INVALID_CONFIGURATION");
     const result = this.db.prepare(`
       UPDATE capabilities SET key = ?, name = ?, description = ?, enabled = ?, version = version + 1, updated_at = ?
       WHERE id = ? AND version = ?
-    `).run(input.key, input.name, input.description, Number(input.enabled), new Date().toISOString(), id, input.version);
+    `).run(key, name, description, Number(input.enabled), new Date().toISOString(), id, input.version);
     if (result.changes === 0) throw new Error("VERSION_CONFLICT");
     return this.getCapability(id);
+  }
+
+  updateCapabilityEnabled(id: string, input: Pick<Capability, "enabled" | "version">): Capability {
+    // 开关只更新状态，避免覆盖描述或路由；版本号防止旧页面误写。
+    this.getCapability(id);
+    const result = this.db.prepare(`UPDATE capabilities SET enabled = ?, version = version + 1, updated_at = ?
+      WHERE id = ? AND version = ?`).run(Number(input.enabled), new Date().toISOString(), id, input.version);
+    if (result.changes === 0) throw new Error("VERSION_CONFLICT");
+    return this.getCapability(id);
+  }
+
+  private capabilityPrompt(id: string): string {
+    const definition = findCapabilityDefinition(this.getCapability(id).definitionKey);
+    // 当前端点表只有 Ollama；未知定义不能借用视觉执行器配置路由。
+    if (!definition || definition.externalProvider !== "ollama") throw new Error("INVALID_CONFIGURATION");
+    return definition.defaultPrompt;
+  }
+
+  updateCapabilityConfiguration(id: string, input: CapabilityConfiguration): Capability {
+    // 能力、部署和路由必须一起提交：后面的引用校验失败也不能留下半份配置。
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const current = this.getCapability(id);
+      const promptTemplate = this.capabilityPrompt(id);
+      const capability = this.updateCapability(id, { ...input, enabled: current.enabled });
+      const oldRoutes = this.listRoutes().filter((route) => route.capabilityId === id);
+      const retained = new Set<string>();
+      for (const route of input.routes) {
+        if (route.id && (!oldRoutes.some((old) => old.id === route.id) || retained.has(route.id))) {
+          throw new Error("INVALID_CONFIGURATION");
+        }
+        if (!this.db.prepare("SELECT id FROM ollama_endpoints WHERE id = ?").get(route.endpointId)) {
+          throw new Error("INVALID_CONFIGURATION");
+        }
+        // 只复用可用且完全匹配的部署；绝不修改已被其他能力共享的模型配置。
+        const match = this.db.prepare(`
+          SELECT * FROM model_deployments
+          WHERE endpoint_id = ? AND model_name = ? AND timeout_ms = ? AND supports_vision = ? AND enabled = 1
+          ORDER BY created_at, id LIMIT 1
+        `).get(route.endpointId, route.modelName, route.timeoutMs, Number(route.supportsVision));
+        const deployment = match ? mapDeployment(match) : this.createDeployment({ ...route, enabled: true });
+        const routeInput = { capabilityId: id, deploymentId: deployment.id, priority: route.priority, promptTemplate, enabled: route.enabled };
+        const saved = route.id ? this.updateRoute(route.id, routeInput) : this.createRoute(routeInput);
+        retained.add(saved.id);
+      }
+      for (const route of oldRoutes) {
+        if (!retained.has(route.id)) this.deleteRoute(route.id);
+      }
+      // 部署已由能力编辑自动管理，只回收本次旧路由留下的孤立记录，保留其他能力共享的部署。
+      const deleteOrphan = this.db.prepare(`DELETE FROM model_deployments WHERE id = ?
+        AND NOT EXISTS (SELECT 1 FROM capability_routes WHERE deployment_id = model_deployments.id)`);
+      for (const deploymentId of new Set(oldRoutes.map((route) => route.deploymentId))) deleteOrphan.run(deploymentId);
+      this.db.exec("COMMIT");
+      return capability;
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   /**
@@ -349,15 +415,33 @@ export class AppDatabase {
     return mapEndpoint(this.db.prepare("SELECT * FROM ollama_endpoints WHERE id = ?").get(id)!);
   }
 
-  updateEndpoint(id: string, input: Pick<OllamaEndpoint, "name" | "baseUrl" | "enabled">): OllamaEndpoint {
-    const result = this.db.prepare(`UPDATE ollama_endpoints SET name = ?, base_url = ?, enabled = ?, updated_at = ? WHERE id = ?`)
-      .run(input.name, input.baseUrl, Number(input.enabled), new Date().toISOString(), id);
+  updateEndpoint(id: string, input: Pick<OllamaEndpoint, "name" | "baseUrl">): OllamaEndpoint {
+    // 编辑与列表开关各写各的字段，避免打开较早的编辑框把新状态覆盖回去。
+    const result = this.db.prepare(`UPDATE ollama_endpoints SET name = ?, base_url = ?, updated_at = ? WHERE id = ?`)
+      .run(input.name, input.baseUrl, new Date().toISOString(), id);
+    if (result.changes === 0) throw new Error("NOT_FOUND");
+    return mapEndpoint(this.db.prepare("SELECT * FROM ollama_endpoints WHERE id = ?").get(id)!);
+  }
+
+  updateEndpointEnabled(id: string, enabled: boolean): OllamaEndpoint {
+    const result = this.db.prepare(`UPDATE ollama_endpoints SET enabled = ?, updated_at = ? WHERE id = ?`)
+      .run(Number(enabled), new Date().toISOString(), id);
     if (result.changes === 0) throw new Error("NOT_FOUND");
     return mapEndpoint(this.db.prepare("SELECT * FROM ollama_endpoints WHERE id = ?").get(id)!);
   }
 
   deleteEndpoint(id: string): void {
-    this.deleteById("ollama_endpoints", id);
+    // 清理旧部署 UI 留下的孤立记录；仍有路由引用时由外键拒绝，并回滚清理以避免副作用。
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      this.db.prepare(`DELETE FROM model_deployments WHERE endpoint_id = ?
+        AND NOT EXISTS (SELECT 1 FROM capability_routes WHERE deployment_id = model_deployments.id)`).run(id);
+      this.deleteById("ollama_endpoints", id);
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   listDeployments(): ModelDeployment[] {
@@ -390,20 +474,22 @@ export class AppDatabase {
     return this.db.prepare("SELECT * FROM capability_routes ORDER BY priority, created_at").all().map(mapRoute);
   }
 
-  createRoute(input: Pick<CapabilityRoute, "capabilityId" | "deploymentId" | "priority" | "promptTemplate" | "enabled">): CapabilityRoute {
+  createRoute(input: Pick<CapabilityRoute, "capabilityId" | "deploymentId" | "priority" | "enabled"> & { promptTemplate?: string }): CapabilityRoute {
+    const promptTemplate = this.capabilityPrompt(input.capabilityId);
     const id = randomUUID();
     const now = new Date().toISOString();
     this.db.prepare(`
       INSERT INTO capability_routes (id, capability_id, deployment_id, priority, prompt_template, enabled, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, input.capabilityId, input.deploymentId, input.priority, input.promptTemplate, Number(input.enabled), now, now);
+    `).run(id, input.capabilityId, input.deploymentId, input.priority, promptTemplate, Number(input.enabled), now, now);
     return mapRoute(this.db.prepare("SELECT * FROM capability_routes WHERE id = ?").get(id)!);
   }
 
-  updateRoute(id: string, input: Pick<CapabilityRoute, "capabilityId" | "deploymentId" | "priority" | "promptTemplate" | "enabled">): CapabilityRoute {
+  updateRoute(id: string, input: Pick<CapabilityRoute, "capabilityId" | "deploymentId" | "priority" | "enabled"> & { promptTemplate?: string }): CapabilityRoute {
+    const promptTemplate = this.capabilityPrompt(input.capabilityId);
     const result = this.db.prepare(`
       UPDATE capability_routes SET capability_id = ?, deployment_id = ?, priority = ?, prompt_template = ?, enabled = ?, updated_at = ? WHERE id = ?
-    `).run(input.capabilityId, input.deploymentId, input.priority, input.promptTemplate, Number(input.enabled), new Date().toISOString(), id);
+    `).run(input.capabilityId, input.deploymentId, input.priority, promptTemplate, Number(input.enabled), new Date().toISOString(), id);
     if (result.changes === 0) throw new Error("NOT_FOUND");
     return mapRoute(this.db.prepare("SELECT * FROM capability_routes WHERE id = ?").get(id)!);
   }
@@ -415,7 +501,7 @@ export class AppDatabase {
   resolveRoutes(capabilityKey: string): ResolvedRoute[] {
     // 能力标识只用于筛选，执行器不需要回传能力标识和名称。
     const rows = this.db.prepare(`
-      SELECT r.*, e.name AS endpoint_name, e.base_url, d.model_name, d.timeout_ms
+      SELECT r.*, c.definition_key, e.name AS endpoint_name, e.base_url, d.model_name, d.timeout_ms
       FROM capability_routes r
       JOIN capabilities c ON c.id = r.capability_id
       JOIN model_deployments d ON d.id = r.deployment_id
@@ -424,8 +510,10 @@ export class AppDatabase {
         AND d.enabled = 1 AND d.supports_vision = 1 AND e.enabled = 1
       ORDER BY r.priority ASC, r.created_at ASC
     `).all(capabilityKey);
-    return rows.map((row) => ({
+    return rows.filter((row) => findCapabilityDefinition(String(row.definition_key))?.externalProvider === "ollama").map((row) => ({
       ...mapRoute(row),
+      // 历史库可能有自填提示词，执行时始终以代码契约为准。
+      promptTemplate: findCapabilityDefinition(String(row.definition_key))!.defaultPrompt,
       endpointName: String(row.endpoint_name),
       baseUrl: String(row.base_url),
       modelName: String(row.model_name),
